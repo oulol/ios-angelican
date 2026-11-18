@@ -1,67 +1,88 @@
-name: xnu-linux
+
+name: XNU Linux VMAPPLE
 
 on:
   workflow_dispatch:
-    inputs:
-      macos_version:
-        description: macOS release (13.5 = XNU 8796)
-        type: choice
-        options:
-          - "13.5"
-        default: "13.5"
 
   push:
     branches:
       - main
       - angelican/minimal-shim
     paths:
-      - "xnu/patches/**"
       - ".github/workflows/xnu-linux.yml"
-
-concurrency:
-  group: xnu-linux-${{ github.ref }}
-  cancel-in-progress: true
+      - "xnu/**"
 
 permissions:
   contents: read
 
+concurrency:
+  group: xnu-linux-vmapple-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    name: Linux XNU toolchain and source test
+    name: XNU 8796 ARM64 DEVELOPMENT VMAPPLE
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
     env:
-      MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
-      UNIXNU_TOOLCHAIN: /opt/unixnu-linux
+      TOOLCHAIN: /opt/unixnu-linux
+      XNU_TAG: xnu-8796.101.5
+      BUILD_JOBS: 4
 
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Checkout Linux toolchain
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential \
+            git \
+            curl \
+            wget \
+            jq \
+            python3 \
+            python3-dev \
+            cmake \
+            ninja-build \
+            pkg-config \
+            xz-utils \
+            zlib1g-dev \
+            libssl-dev \
+            libbsd-dev \
+            uuid-dev \
+            libclang-dev \
+            llvm-dev \
+            device-tree-compiler \
+            cpio \
+            libxml2-dev
+
+      - name: Checkout UniXNU Linux toolchain
         run: |
           git clone --depth 1 \
             https://github.com/UniXNU/UniXNU.git \
             linux-toolchain
 
-      - name: Build Linux XNU toolchain
-        run: |
-          cd linux-toolchain
+      - name: Cache Linux toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/unixnu-linux
+          key: unixnu-linux-toolchain-v1-ubuntu24
 
-          sudo python3 scripts/linux/setup-toolchain.py \
-            "$UNIXNU_TOOLCHAIN" \
-            --jobs 2
+      - name: Build Linux toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo python3 linux-toolchain/scripts/linux/setup-toolchain.py \
+            "$TOOLCHAIN" \
+            --jobs "$BUILD_JOBS"
 
       - name: Verify Linux toolchain
         run: |
           set -eux
-
-          TOOLCHAIN="$UNIXNU_TOOLCHAIN"
-
-          "$TOOLCHAIN/llvm/bin/clang" --version
-          "$TOOLCHAIN/CommandLineTools/usr/bin/ld" -v || true
-          "$TOOLCHAIN/CommandLineTools/usr/bin/libtool" -V || true
 
           test -x "$TOOLCHAIN/llvm/bin/clang"
           test -x "$TOOLCHAIN/CommandLineTools/usr/bin/ld"
@@ -69,82 +90,137 @@ jobs:
           test -x "$TOOLCHAIN/CommandLineTools/usr/bin/mig"
           test -x "$TOOLCHAIN/XcodeDefault.xctoolchain/usr/bin/iig"
 
-          "$TOOLCHAIN/llvm/bin/clang" \
-            -target arm64-apple-ios16.0 \
-            -dM -E -x c /dev/null
+          "$TOOLCHAIN/llvm/bin/clang" --version
 
-      - name: Fetch matching XNU source
+          echo "$TOOLCHAIN/llvm/bin" >> "$GITHUB_PATH"
+          echo "$TOOLCHAIN/CommandLineTools/usr/bin" >> "$GITHUB_PATH"
+          echo "$TOOLCHAIN/XcodeDefault.xctoolchain/usr/bin" >> "$GITHUB_PATH"
+
+      - name: Download macOS SDK
         run: |
           set -eux
 
-          RELEASE_TAG="macos-${MACOS_VERSION//./}"
-          RELEASE_URL="https://raw.githubusercontent.com/apple-oss-distributions/distribution-macOS/${RELEASE_TAG}/release.json"
+          mkdir -p "$RUNNER_TEMP/sdk"
 
-          curl -fL "$RELEASE_URL" -o release.json
+          curl -fL --retry 3 \
+            https://github.com/joseluisq/macosx-sdks/releases/download/13.3/MacOSX13.3.sdk.tar.xz \
+            -o "$RUNNER_TEMP/sdk/MacOSX13.3.sdk.tar.xz"
 
-          XNU_TAG=$(jq -r \
-            '.projects[] | select(.project == "xnu") | .tag' \
-            release.json)
+          echo "518e35eae6039b3f64e8025f4525c1c43786cc5cf39459d609852faf091e34be  $RUNNER_TEMP/sdk/MacOSX13.3.sdk.tar.xz" \
+            | sha256sum -c -
 
-          if [ -z "$XNU_TAG" ] || [ "$XNU_TAG" = "null" ]; then
-            echo "Could not resolve XNU tag"
-            exit 1
-          fi
+          mkdir -p "$RUNNER_TEMP/SDKs"
 
-          echo "XNU_TAG=$XNU_TAG" >> "$GITHUB_ENV"
+          tar -xJf "$RUNNER_TEMP/sdk/MacOSX13.3.sdk.tar.xz" \
+            -C "$RUNNER_TEMP/SDKs"
 
-          git clone --depth 1 \
+          SDKROOT="$RUNNER_TEMP/SDKs/MacOSX13.3.sdk"
+
+          test -d "$SDKROOT"
+
+          echo "SDKROOT=$SDKROOT" >> "$GITHUB_ENV"
+
+      - name: Fetch XNU 8796
+        run: |
+          set -eux
+
+          git clone \
+            --depth 1 \
             --branch "$XNU_TAG" \
             https://github.com/apple-oss-distributions/xnu.git \
-            xnu-linux
+            xnu-source
 
-          git -C xnu-linux rev-parse HEAD
+          git -C xnu-source rev-parse HEAD
 
-      - name: Test XNU-specific Clang builtins
+      - name: Prepare build directories
         run: |
-          set -eux
+          mkdir -p \
+            build/xnu.obj \
+            build/xnu.sym \
+            build/xnu.dst
 
-          CLANG="$UNIXNU_TOOLCHAIN/llvm/bin/clang"
+      - name: Compile XNU VMAPPLE
+        shell: bash
+        run: |
+          set -o pipefail
 
-          printf '%s\n' \
-            '#if __has_builtin(__builtin_xnu_type_summary)' \
-            'XNU_BUILTINS_AVAILABLE' \
-            '#endif' \
-            | "$CLANG" -target arm64-apple-ios16.0 -E -x c -
+          cd xnu-source
 
-      - name: Save build diagnostics
+          export PATH="$TOOLCHAIN/llvm/bin:$TOOLCHAIN/CommandLineTools/usr/bin:$TOOLCHAIN/XcodeDefault.xctoolchain/usr/bin:$PATH"
+
+          export SDKROOT="$SDKROOT"
+
+          export ARCH_CONFIGS=ARM64
+          export MACHINE_CONFIGS=VMAPPLE
+          export KERNEL_CONFIGS=DEVELOPMENT
+
+          export BUILD_LTO=0
+          export BUILD_WERROR=0
+
+          make install \
+            -j"$BUILD_JOBS" \
+            SDKROOT="$SDKROOT" \
+            TARGET_CONFIGS="DEVELOPMENT ARM64 VMAPPLE" \
+            ARCH_CONFIGS=ARM64 \
+            MACHINE_CONFIGS=VMAPPLE \
+            KERNEL_CONFIGS=DEVELOPMENT \
+            BUILD_LTO=0 \
+            BUILD_WERROR=0 \
+            SRCROOT="$PWD" \
+            OBJROOT="$GITHUB_WORKSPACE/build/xnu.obj" \
+            SYMROOT="$GITHUB_WORKSPACE/build/xnu.sym" \
+            DSTROOT="$GITHUB_WORKSPACE/build/xnu.dst" \
+            VERBOSE=YES \
+            2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+
+      - name: Locate compiled kernel
         if: always()
         run: |
-          mkdir -p out
+          mkdir -p artifacts
+
+          find build -type f \
+            \( -name 'kernel.development.vmapple' \
+            -o -name 'mach.development.vmapple*' \
+            -o -name '*.macho' \) \
+            -print | tee artifacts/kernel-files.txt
+
+          find build -type f \
+            -name '*vmapple*' \
+            -exec file {} \; \
+            | tee artifacts/kernel-types.txt
+
+      - name: Collect build logs
+        if: always()
+        run: |
+          cp xnu-build.log artifacts/ 2>/dev/null || true
 
           {
-            echo "Host:"
-            uname -a
+            echo "XNU tag: $XNU_TAG"
+            echo "Architecture: ARM64"
+            echo "Machine: VMAPPLE"
+            echo "Configuration: DEVELOPMENT"
 
             echo
-            echo "Distribution:"
-            cat /etc/os-release
+            echo "Compiler:"
+            "$TOOLCHAIN/llvm/bin/clang" --version 2>&1 || true
 
             echo
-            echo "XNU version:"
-            git -C xnu-linux describe --tags --always 2>&1 || true
+            echo "SDK:"
+            echo "$SDKROOT"
 
             echo
-            echo "Toolchain:"
-            "$UNIXNU_TOOLCHAIN/llvm/bin/clang" --version 2>&1 || true
+            echo "Build files:"
+            find build -type f 2>/dev/null || true
+          } > artifacts/build-info.txt
 
-            echo
-            echo "Tools:"
-            find "$UNIXNU_TOOLCHAIN" \
-              \( -name clang -o -name ld -o -name mig -o -name iig \) \
-              -type f 2>/dev/null || true
-          } > out/diagnostics.txt
-
-          cp release.json out/ 2>/dev/null || true
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload XNU build
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: xnu-linux-diagnostics
-          path: out/
-          retention-days: 7
+          name: xnu-8796-linux-arm64-vmapple
+          path: |
+            build/
+            artifacts/
+            xnu-build.log
+          if-no-files-found: warn
+          retention-days: 14
