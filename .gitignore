@@ -9,5 +9,8 @@ shim-sweet/out/
 device/
 xnu/out/
 xnu/out-*/
+unpacked/
+*.img
+*.log
 __pycache__/
 .vscode
