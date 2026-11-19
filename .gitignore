@@ -10,3 +10,4 @@ device/
 xnu/out/
 xnu/out-*/
 __pycache__/
+.vscode
