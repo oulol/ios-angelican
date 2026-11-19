@@ -1,0 +1,217 @@
+
+diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
+index 997a4ab..0000000 100644
+--- a/pexpert/arm/pe_serial.c
++++ b/pexpert/arm/pe_serial.c
+@@ -630,6 +630,153 @@ SECURITY_READ_ONLY_LATE(static struct pe_serial_functions) vmapple_uart_serial_
+ };
+ #endif /* VMAPPLE_UART */
+ 
++/*****************************************************************************/
++/*
++ * Angelican framebuffer console.
++ *
++ * The Redmi 9C NFC bootloader provides a 720x1600, 32bpp framebuffer.
++ * Its physical address and geometry are supplied by the Angelican shim.
++ *
++ * The framebuffer is treated as a polled serial device so existing XNU
++ * kprintf/uart_putc output can be displayed without a hardware UART.
++ */
++
++extern unsigned char iso_font[256 * 16];
++
++#define ANGELICAN_FBCON_BASE    0x7EC50000ULL
++#define ANGELICAN_FBCON_SIZE    0x00D8C000ULL
++#define ANGELICAN_FBCON_WIDTH   720u
++#define ANGELICAN_FBCON_HEIGHT  1600u
++#define ANGELICAN_FBCON_STRIDE  2944u
++
++#define ANGELICAN_FBCON_SCALE   2u
++#define ANGELICAN_FBCON_FG      0xffffffffu
++#define ANGELICAN_FBCON_BG      0xff000000u
++
++static volatile uint32_t *angelican_fbcon_base;
++static uint32_t angelican_fbcon_cols;
++static uint32_t angelican_fbcon_rows;
++static uint32_t angelican_fbcon_col;
++static uint32_t angelican_fbcon_row;
++
++static void
++angelican_fbcon_clear_row(uint32_t row)
++{
++    uint32_t y;
++
++    for (y = row * 16u * ANGELICAN_FBCON_SCALE;
++         y < (row + 1u) * 16u * ANGELICAN_FBCON_SCALE;
++         y++) {
++        volatile uint32_t *line =
++            angelican_fbcon_base +
++            y * (ANGELICAN_FBCON_STRIDE / sizeof(uint32_t));
++        uint32_t x;
++
++        for (x = 0; x < ANGELICAN_FBCON_WIDTH; x++) {
++            line[x] = ANGELICAN_FBCON_BG;
++        }
++    }
++}
++
++static void
++angelican_fbcon_newline(void)
++{
++    angelican_fbcon_col = 0;
++    angelican_fbcon_row =
++        (angelican_fbcon_row + 1u) % angelican_fbcon_rows;
++
++    angelican_fbcon_clear_row(angelican_fbcon_row);
++    angelican_fbcon_clear_row(
++        (angelican_fbcon_row + 1u) % angelican_fbcon_rows);
++}
++
++static void
++angelican_fbcon_init(void)
++{
++    angelican_fbcon_cols =
++        ANGELICAN_FBCON_WIDTH / (8u * ANGELICAN_FBCON_SCALE);
++    angelican_fbcon_rows =
++        ANGELICAN_FBCON_HEIGHT / (16u * ANGELICAN_FBCON_SCALE);
++
++    angelican_fbcon_col = 0;
++    angelican_fbcon_row = 0;
++
++    for (uint32_t row = 0; row < angelican_fbcon_rows; row++) {
++        angelican_fbcon_clear_row(row);
++    }
++}
++
++static unsigned int
++angelican_fbcon_transmit_ready(void)
++{
++    return 1;
++}
++
++static void
++angelican_fbcon_transmit_data(uint8_t c)
++{
++    const unsigned char *glyph;
++    uint32_t x0, y0, gy;
++
++    if (c == '\r') {
++        angelican_fbcon_col = 0;
++        return;
++    }
++
++    if (c == '\n') {
++        angelican_fbcon_newline();
++        return;
++    }
++
++    if (angelican_fbcon_col >= angelican_fbcon_cols) {
++        angelican_fbcon_newline();
++    }
++
++    glyph = iso_font + ((uint32_t)c * 16u);
++    x0 = angelican_fbcon_col * 8u * ANGELICAN_FBCON_SCALE;
++    y0 = angelican_fbcon_row * 16u * ANGELICAN_FBCON_SCALE;
++
++    for (gy = 0; gy < 16u; gy++) {
++        uint32_t sy;
++
++        for (sy = 0; sy < ANGELICAN_FBCON_SCALE; sy++) {
++            volatile uint32_t *line =
++                angelican_fbcon_base +
++                (y0 + gy * ANGELICAN_FBCON_SCALE + sy) *
++                    (ANGELICAN_FBCON_STRIDE / sizeof(uint32_t)) +
++                x0;
++            uint32_t gx;
++
++            for (gx = 0; gx < 8u; gx++) {
++                uint32_t pixel =
++                    (glyph[gy] & (1u << gx)) ?
++                    ANGELICAN_FBCON_FG : ANGELICAN_FBCON_BG;
++                uint32_t sx;
++
++                for (sx = 0; sx < ANGELICAN_FBCON_SCALE; sx++) {
++                    line[gx * ANGELICAN_FBCON_SCALE + sx] = pixel;
++                }
++            }
++        }
++    }
++
++    angelican_fbcon_col++;
++}
++
++static unsigned int
++angelican_fbcon_receive_ready(void)
++{
++    return 0;
++}
++
++static uint8_t
++angelican_fbcon_receive_data(void)
++{
++    return 0;
++}
++
++SECURITY_READ_ONLY_LATE(static struct pe_serial_functions)
++angelican_fbcon_serial_functions =
++{
++    .init = angelican_fbcon_init,
++    .transmit_ready = angelican_fbcon_transmit_ready,
++    .transmit_data = angelican_fbcon_transmit_data,
++    .receive_ready = angelican_fbcon_receive_ready,
++    .receive_data = angelican_fbcon_receive_data,
++    .device = SERIAL_ANGELICAN_FBCON
++};
++
++static void
++angelican_fbcon_probe(void)
++{
++    angelican_fbcon_base = (volatile uint32_t *)
++        ml_io_map_wcomb(ANGELICAN_FBCON_BASE, ANGELICAN_FBCON_SIZE);
++
++    if (angelican_fbcon_base != NULL) {
++        register_serial_functions(&angelican_fbcon_serial_functions);
++    }
++}
++
+ /*****************************************************************************/
+ 
+ /**
+@@ -715,9 +862,15 @@ serial_init(void)
+         return 1;
+     }
+ 
++    /*
++     * Register the framebuffer console before checking the SoC base.
++     * Angelican's framebuffer has an absolute physical address and does not
++     * depend on the SoC-relative UART device-tree mappings.
++     */
++    angelican_fbcon_probe();
++
+     soc_base = pe_arm_get_soc_base_phys();
+     if (soc_base == 0) {
+-        return 0;
++        goto serial_init_registered_devices;
+     }
+ 
+     PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
+@@ -833,6 +986,7 @@ serial_init(void)
+ 	}
+ #endif /* APPLE_UART */
+ 
++serial_init_registered_devices:
+ 	if (gPESF == NULL) {
+ 		return 0;
+ 	}
+diff --git a/pexpert/pexpert/arm/protos.h b/pexpert/pexpert/arm/protos.h
+index 404b50b..0000000 100644
+--- a/pexpert/pexpert/arm/protos.h
++++ b/pexpert/pexpert/arm/protos.h
+@@ -43,7 +43,8 @@ typedef enum serial_device {
+     SERIAL_DOCKCHANNEL=0x2,
+     SERIAL_PI3_UART=0x4,
+     SERIAL_VMAPPLE_UART=0x8,
+-    SERIAL_DCC_UART=0x10
++    SERIAL_DCC_UART=0x10,
++    SERIAL_ANGELICAN_FBCON=0x20
+ } serial_device_t;
