@@ -66,6 +66,11 @@ void con_skip(void)
 	row++;
 }
 
+void con_up(void)
+{
+	row--;
+}
+
 void con_str(const char *label, const char *s)
 {
 	put_str(0, label, YELLOW);

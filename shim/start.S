@@ -40,7 +40,7 @@ _start:
     add  x9, x9, :lo12:_stack_top
     mov sp, x9
 
-    bl minimal_main
+    bl main
 
 1:
     wfe

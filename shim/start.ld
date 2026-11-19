@@ -7,6 +7,7 @@ SECTIONS
 
     .text : {
         KEEP(*(.text.head))
+        KEEP(*(.text.el1vectors))
         *(.text*)
     }
 
