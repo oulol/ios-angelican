@@ -1,21 +1,19 @@
-
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 997a4ab..0000000 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -630,6 +630,153 @@ SECURITY_READ_ONLY_LATE(static struct pe_serial_functions) vmapple_uart_serial_
- };
- #endif /* VMAPPLE_UART */
+@@ -697,6 +697,171 @@ register_serial_functions(struct pe_serial_functions *fns)
+ register_serial_functions(struct pe_serial_functions *fns)
+ {
+     gPESF = fns;
+ }
  
-+/*****************************************************************************/
++
 +/*
 + * Angelican framebuffer console.
 + *
-+ * The Redmi 9C NFC bootloader provides a 720x1600, 32bpp framebuffer.
-+ * Its physical address and geometry are supplied by the Angelican shim.
-+ *
-+ * The framebuffer is treated as a polled serial device so existing XNU
-+ * kprintf/uart_putc output can be displayed without a hardware UART.
++ * Redmi 9C NFC framebuffer:
++ * 720x1600, 32bpp, stride 2944 bytes.
++ * The address is absolute physical memory supplied by the bootloader.
 + */
 +
 +extern unsigned char iso_font[256 * 16];
@@ -174,18 +172,9 @@ index 997a4ab..0000000 100644
 +    }
 +}
 +
- /*****************************************************************************/
- 
- /**
-@@ -715,9 +862,15 @@ serial_init(void)
-         return 1;
-     }
- 
-+    /*
-+     * Register the framebuffer console before checking the SoC base.
-+     * Angelican's framebuffer has an absolute physical address and does not
-+     * depend on the SoC-relative UART device-tree mappings.
-+     */
+ #if HIBERNATION
+@@ -715,4 +715,7 @@ serial_init(void)
++    /* Register the absolute-address framebuffer before the SoC check. */
 +    angelican_fbcon_probe();
 +
      soc_base = pe_arm_get_soc_base_phys();
@@ -193,21 +182,15 @@ index 997a4ab..0000000 100644
 -        return 0;
 +        goto serial_init_registered_devices;
      }
- 
-     PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
-@@ -833,6 +986,7 @@ serial_init(void)
- 	}
+@@ -833,3 +833,4 @@ serial_init(void)
  #endif /* APPLE_UART */
  
 +serial_init_registered_devices:
- 	if (gPESF == NULL) {
- 		return 0;
- 	}
+     if (gPESF == NULL) {
 diff --git a/pexpert/pexpert/arm/protos.h b/pexpert/pexpert/arm/protos.h
-index 404b50b..0000000 100644
 --- a/pexpert/pexpert/arm/protos.h
 +++ b/pexpert/pexpert/arm/protos.h
-@@ -43,7 +43,8 @@ typedef enum serial_device {
+@@ -47,5 +47,6 @@ typedef enum serial_device
      SERIAL_DOCKCHANNEL=0x2,
      SERIAL_PI3_UART=0x4,
      SERIAL_VMAPPLE_UART=0x8,
