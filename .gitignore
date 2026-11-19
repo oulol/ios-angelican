@@ -12,5 +12,6 @@ xnu/out-*/
 unpacked/
 *.img
 *.log
+*.adt
 __pycache__/
 .vscode
