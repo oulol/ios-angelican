@@ -70,6 +70,10 @@ void con_up(void)
 {
 	row--;
 }
+void con_top(void)
+{
+	row = 0;
+}
 
 void con_str(const char *label, const char *s)
 {
