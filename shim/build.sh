@@ -48,7 +48,7 @@ HEADER_VERSION=2
 OS_VERSION="13.0.0"
 OS_PATCH_LEVEL="2024-04"
 
-CMDLINE="console=null"
+CMDLINE="bootopt=64S3,32N2,64N2 androidboot.selinux=permissive androidboot.init_fatal_reboot_target=recovery kpti=off buildvariant=userdebug"
 
 # ---------------------------------------------------------------------------
 # Toolchain
@@ -177,6 +177,7 @@ echo "[3/6] Linking..."
     -no-pie \
     -Wl,--build-id=none \
     -Wl,-T,start.ld \
+    -Wl,-N \
     -Wl,-Map,"$OUT/shim.map" \
     "${OBJECTS[@]}" \
     -o "$OUT/shim.elf"
@@ -230,9 +231,10 @@ fi
 echo
 echo "Building Android boot image..."
 
+gzip -n -9 -c "$OUT/Image" > "$OUT/kernel.gz"
 mkbootimg \
     --header_version "$HEADER_VERSION" \
-    --kernel "$OUT/Image" \
+    --kernel "$OUT/kernel.gz" \
     --ramdisk "$OUT/ramdisk.bin" \
     --dtb "$DTB" \
     --base "$BASE" \
