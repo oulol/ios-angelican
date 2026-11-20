@@ -7,6 +7,7 @@
 #include "power.h"
 #include "watchdog.h"
 #include "bootinfo.h"
+#include "loader_xnu.h"
 
 #include <stdint.h>
 
@@ -233,28 +234,6 @@ void minimal_el1_main(void)
 
     power_init();
 
-    /* MMU */
-
-    if (!mmu_is_enabled()) {
-        con_str("MMU", "Enabling MMU...");
-
-        int result = mmu_init();
-
-        if (result != 0) {
-            con_hex("MMU ERROR", (uint64_t)(uint32_t)(-result));
-
-            for (;;) {
-                watchdog_service();
-                __asm__ volatile("wfe");
-            }
-        }
-
-    }
-
-    con_str("MMU", "MMU enabled.");
-
-    /* Main loop */
-
     con_str("POWER", "Power polling active.");
 
     uint64_t frequency = watchdog_read_frequency();
@@ -271,6 +250,14 @@ void minimal_el1_main(void)
     con_str("SHIM", "Initialization complete.");
 
     bootinfo_dump((uintptr_t)boot_state.x0);
+
+    con_clear(BLACK);
+
+    con_str("XNU", "Calling XNU Boot");
+    loader_xnu_boot((uintptr_t)boot_state.x0);
+
+    con_top();
+    con_str("XNU", "XNU returned");
 
     for (;;) {
         watchdog_service();
