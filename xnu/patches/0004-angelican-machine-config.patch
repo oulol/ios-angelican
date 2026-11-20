@@ -86,8 +86,6 @@ index 0000000..7306b50
 +#define __ARM_DEBUG__               7
 +#define __ARM_ENABLE_SWAP__         1
 +
-+/* The Angelican XNU port uses 16 KiB translation granules. */
-+#define __ARM_16K_PG__              1
 +
 +#define HAS_GIC_V3                  1
 +
