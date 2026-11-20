@@ -101,7 +101,7 @@ index 0000000..963cdc1
 + * sweet: files.arm64 builds this for nos_arm_asm, but the source only ships
 + * in Apple's closed per-SoC library. It implements the AMCC read-only region
 + * (KTRR/CTRR kernel text lockdown), which needs Apple memory controller
-+ * hardware; nothing references it on SWEET (no KERNEL_INTEGRITY_KTRR/CTRR).
++ * hardware; nothing references it on ANGELICAN (no KERNEL_INTEGRITY_KTRR/CTRR).
 + */
 +#include <stdint.h>
 +
@@ -116,7 +116,7 @@ index 0000000..963cdc1
 + * sweet: files.arm64 builds this for nos_arm_asm, but the source only ships
 + * in Apple's closed per-SoC library. It implements the AMCC read-only region
 + * (KTRR/CTRR kernel text lockdown), which needs Apple memory controller
-+ * hardware; nothing references it on SWEET (no KERNEL_INTEGRITY_KTRR/CTRR).
++ * hardware; nothing references it on ANGELICAN (no KERNEL_INTEGRITY_KTRR/CTRR).
 + */
 +#include <stdint.h>
 +
@@ -330,17 +330,17 @@ index c803e4e..c90ec1a 100644
  	return dec;
  }
  
-+#if defined(SWEET)
++#if defined(ANGELICAN)
 +/*
-+ * sweet: arm_vm_init() calls this unconditionally; Apple's definition (it
++ * angelican: arm_vm_init() calls this unconditionally; Apple's definition (it
 + * enters the PPL/monitor) ships only in the closed per-SoC library. There is
-+ * no monitor on SWEET.
++ * no monitor on ANGELICAN.
 + */
 +void
 +ml_enable_monitor(void)
 +{
 +}
-+#endif /* SWEET */
++#endif /* ANGELICAN */
 +
  boolean_t
  ml_get_timer_pending(void)
