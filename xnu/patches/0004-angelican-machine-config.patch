@@ -87,6 +87,8 @@ index 0000000..7306b50
 +#define __ARM_ENABLE_SWAP__         1
 +
 +
++
++
 +#define HAS_GIC_V3                  1
 +
 +#ifndef ASSEMBLER
