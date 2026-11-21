@@ -217,22 +217,22 @@ void el1_exception_dispatch(
         ec == 0x24 || ec == 0x25 || ec == 0x34 || ec == 0x35;
 
     static const char vector_names[16][32] = {
-        "Current EL, SP0, sync",
-        "Current EL, SP0, IRQ",
-        "Current EL, SP0, FIQ",
-        "Current EL, SP0, SError",
-        "Current EL, SPx, sync",
-        "Current EL, SPx, IRQ",
-        "Current EL, SPx, FIQ",
-        "Current EL, SPx, SError",
-        "Lower EL AArch64, sync",
-        "Lower EL AArch64, IRQ",
-        "Lower EL AArch64, FIQ",
-        "Lower EL AArch64, SError",
-        "Lower EL AArch32, sync",
-        "Lower EL AArch32, IRQ",
-        "Lower EL AArch32, FIQ",
-        "Lower EL AArch32, SError"
+        "Current EL,     SP0, sync",
+        "Current EL,     SP0, IRQ",
+        "Current EL,     SP0, FIQ",
+        "Current EL,     SP0, SError",
+        "Current EL,     SPx, sync",
+        "Current EL,     SPx, IRQ",
+        "Current EL,     SPx, FIQ",
+        "Current EL,     SPx, SError",
+        "Lower EL        AArch64, sync",
+        "Lower EL        AArch64, IRQ",
+        "Lower EL       AArch64, FIQ",
+        "Lower EL       AArch64, SError",
+        "Lower EL       AArch32, sync",
+        "Lower EL       AArch32, IRQ",
+        "Lower EL       AArch32, FIQ",
+        "Lower EL       AArch32, SError"
     };
 
     static const char exception_names[64][32] = {
@@ -264,9 +264,7 @@ void el1_exception_dispatch(
     static const char unknown_exception[] = "Unclassified exception";
 
     con_clear(RED);
-    con_skip();
-
-    con_str("FAULT", "UNHANDLED EL1 EXCEPTION");
+    
     con_str("VECTOR", vector < 16
         ? vector_names[vector]
         : unknown_vector);
@@ -317,8 +315,6 @@ void el1_exception_dispatch(
     for (unsigned int i = 0; i < 31; ++i) {
         con_hex(register_names[i], frame->x[i]);
     }
-
-    con_skip();
 
     wait_loop();
 }
