@@ -15,3 +15,5 @@ void el1_exception_dispatch(
     const el1_exception_frame_t *frame,
     uint64_t vector
 ) __attribute__((noreturn));
+
+void wait_loop(void);

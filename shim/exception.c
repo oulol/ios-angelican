@@ -320,6 +320,11 @@ void el1_exception_dispatch(
 
     con_skip();
 
+    wait_loop();
+}
+
+
+void wait_loop() {
     static const char spinner[] = "|/-\\";
     static unsigned int cursor = 0;
 
