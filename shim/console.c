@@ -10,6 +10,7 @@
 #define CH_H		(16 * SCALE)
 #define MARGIN		24
 #define LABEL_COLS	8
+#define MAX_ROWS 49
 
 volatile uint32_t *con_fb = (volatile uint32_t *)FB_BASE;
 static uint32_t con_bg;
@@ -26,6 +27,21 @@ void con_clear(uint32_t bg)
 	row = 0;
 }
 
+static void clear_line(void)
+{
+	int y0 = MARGIN + row * CH_H;
+
+	if (y0 + CH_H > FB_H)
+		return;
+
+	for (int y = y0; y < y0 + CH_H; y++) {
+		volatile uint32_t *p =
+			con_fb + y * (FB_STRIDE / 4) + MARGIN;
+
+		for (int x = MARGIN; x < FB_W - MARGIN; x++)
+			p[x - MARGIN] = con_bg;
+	}
+}
 static void put_char(int col, char ch, uint32_t fg)
 {
 	if (ch < 0x20 || ch > 0x7e)
@@ -77,9 +93,14 @@ void con_top(void)
 
 void con_str(const char *label, const char *s)
 {
+	clear_line();
 	put_str(0, label, YELLOW);
 	put_str(LABEL_COLS, s, WHITE);
 	row++;
+	if (row > MAX_ROWS) {
+		row = 0;
+	}
+	clear_line();
 }
 
 void con_hex(const char *label, uint64_t v)
@@ -91,6 +112,7 @@ void con_hex(const char *label, uint64_t v)
 
 void con_hex2(const char *label, const char *a, uint32_t va, const char *b, uint32_t vb)
 {
+	clear_line();
 	char buf[9];
 	int col = put_str(0, label, YELLOW);
 	col = col < LABEL_COLS ? LABEL_COLS : col + 1;
@@ -103,4 +125,8 @@ void con_hex2(const char *label, const char *a, uint32_t va, const char *b, uint
 		put_str(col, buf, WHITE);
 	}
 	row++;
+	if (row > MAX_ROWS) {
+		row = 0;
+	}
+	clear_line();
 }
