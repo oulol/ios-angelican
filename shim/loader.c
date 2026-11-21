@@ -8,6 +8,7 @@
 #include "watchdog.h"
 #include "bootinfo.h"
 #include "loader_xnu.h"
+#include "fdt.h"
 
 #include <stdint.h>
 
@@ -253,9 +254,11 @@ void minimal_el1_main(void)
 
     con_clear(BLACK);
 
+    // fdt_dump_memory((uintptr_t)boot_state.x0);
+
     con_str("XNU", "Calling XNU Boot");
     loader_xnu_boot((uintptr_t)boot_state.x0);
-
+    
     con_top();
     con_str("XNU", "XNU returned");
 
