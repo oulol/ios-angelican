@@ -51,18 +51,12 @@ index 133b07f..c98fc5f 100644
  #error processor not supported
  #endif
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 505533a..60a86a3 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -746,8 +746,6 @@ common_start:
- 	isb		sy
- 
+@@ -748,3 +748,1 @@
  	MOV64   x1, SCTLR_EL1_DEFAULT
 -	cmp		x0, x1
 -	bne		.
- 
- #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
- 	/* Watchtower
 diff --git a/pexpert/pexpert/arm64/ANGELICAN.h b/pexpert/pexpert/arm64/ANGELICAN.h
 new file mode 100644
 index 0000000..c93b444
