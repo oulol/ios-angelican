@@ -87,45 +87,69 @@ index d89b0f1..d0c710d 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 505533a..7f77687 100644
+index 505533a..0575138 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -40,7 +40,55 @@
+@@ -40,7 +40,80 @@
  #include <arm/pmap.h>
  #endif /* __ARM_KERNEL_PROTECT__ */
  
 +#if defined(ANGELICAN)
 +
 +.macro ANGELICAN_MARK stage
-+    /* Calculate framebuffer address: row = 1536 + stage * 8 */
-+    MOV64   x0, 0x7ec50000
-+    mov     x7, #1536
-+    add     x7, x7, #(\stage * 8)
++
++    /* Framebuffer address: row = stage * 20 */
++    movz    x0, #0x0000
++    movk    x0, #0x7ec5, lsl #16
++
++    mov     x7, #0
 +    mov     x8, #2944
 +    madd    x0, x7, x8, x0
 +
-+    /* Select color by stage */
-+    .if \stage == 0
-+        mov     w1, #0xffff
-+        movk    w1, #0xff00, lsl #16   // Green
++        .if \stage == 0
++        /* Red: 0xFFFF0000 */
++        movz    w1, #0x0000
++        movk    w1, #0xffff, lsl #16
++
 +    .elseif \stage == 1
-+        mov     w1, #0
-+        movk    w1, #0xffff, lsl #16   // Red
++        /* Orange: 0xFFFF8000 */
++        movz    w1, #0x8000
++        movk    w1, #0xffff, lsl #16
++
 +    .elseif \stage == 2
-+        mov     w1, #0xffff
-+        movk    w1, #0x00ff, lsl #16   // Yellow
++        /* Yellow: 0xFFFFFF00 */
++        movz    w1, #0xff00
++        movk    w1, #0xffff, lsl #16
++
 +    .elseif \stage == 3
-+        mov     w1, #0x00a0
-+        movk    w1, #0xff00, lsl #16   // Blue
++        /* Green: 0xFF00FF00 */
++        movz    w1, #0xff00
++        movk    w1, #0xff00, lsl #16
++
 +    .elseif \stage == 4
-+        mov     w1, #0xffff
-+        movk    w1, #0xffff, lsl #16   // White
++        /* Cyan: 0xFF00FFFF */
++        movz    w1, #0xffff
++        movk    w1, #0xff00, lsl #16
++
++    .elseif \stage == 5
++        /* Blue: 0xFF0000FF */
++        movz    w1, #0x00ff
++        movk    w1, #0xff00, lsl #16
++
++    .elseif \stage == 6
++        /* Violet: 0xFF8000FF */
++        movz    w1, #0x00ff
++        movk    w1, #0xff80, lsl #16
++    
 +    .else
-+        mov     w1, #0
-+        movk    w1, #0xffff, lsl #16   // Red fallback
++        /* White: 0xFFFFFFFF */
++        movz    w1, #0xffff
++        movk    w1, #0xffff, lsl #16
 +    .endif
 +
-+    mov     x2, #8
++    /* Draw 20 rows */
++    mov     x2, #20
++
 +.Langelican_row\@:
 +    mov     x3, #720
 +    mov     x5, x0
@@ -133,13 +157,14 @@ index 505533a..7f77687 100644
 +.Langelican_pixel\@:
 +    str     w1, [x5], #4
 +    subs    x3, x3, #1
-+    b.ne    .Langelican_pixel\@
++    b.ne   .Langelican_pixel\@
 +
-+    add     x0, x0, x8
-+    subs    x2, x2, #1
-+    b.ne    .Langelican_row\@
++    add    x0, x0, x8
++    subs   x2, x2, #1
++    b.ne   .Langelican_row\@
 +
-+    dsb     sy
++    dsb    sy
++
 +.endm
  
 +#endif
