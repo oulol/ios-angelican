@@ -277,7 +277,7 @@ index e5336e5..9d8701c 100644
 +		movk	\tmp, #0xFFFF, lsl #16	/* Orange */
 +	.elseif \color == 3
 +		mov	\tmp, #0xFF00
-+		movk	\tmp, #0xFFFFFF00, lsl #16	/* Yellow */
++		movk \tmp, #0xFFFF, lsl #16	/* Yellow */
 +	.elseif \color == 4
 +		mov	\tmp, #0xFF00
 +		movk	\tmp, #0xFF00, lsl #16	/* Green */
@@ -291,7 +291,7 @@ index e5336e5..9d8701c 100644
 +		mov	\tmp, #0x80FF
 +		movk	\tmp, #0x8000, lsl #16	/* Purple */
 +	.else
-+		.error "Invalid ANGELICAN_FILL_SCREEN color"
++		.error "Invalid ANGELICAN_MARKER color"
 +	.endif
 +
 +	mov	\rows, #32
@@ -321,7 +321,7 @@ index e5336e5..9d8701c 100644
  	mov		x21, #0
  
 +#if defined(ANGELICAN)
-+    ANGELICAN_FILL_SCREEN x9, 0, x10, x11, x12, x13
++    ANGELICAN_MARKER x9, 0, x10, x11, x12, x13
 +#endif
 +
  	// Set low reset vector before attempting any loads
