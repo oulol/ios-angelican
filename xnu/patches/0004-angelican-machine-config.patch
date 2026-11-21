@@ -51,12 +51,23 @@ index 133b07f..c98fc5f 100644
  #error processor not supported
  #endif
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index e5336e5..0517598 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -748,3 +748,1 @@
+@@ -745,11 +745,11 @@ common_start:
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
+ 
+-#if !VMAPPLE
++#if !VMAPPLE && !defined(ANGELICAN)
  	MOV64   x1, SCTLR_EL1_DEFAULT
--	cmp		x0, x1
--	bne		.
+ 	cmp		x0, x1
+ 	bne		.
+-#endif /* !VMAPPLE */
++#endif /* !VMAPPLE && !ANGELICAN */
+ 
+ #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
+ 	/* Watchtower
 diff --git a/pexpert/pexpert/arm64/ANGELICAN.h b/pexpert/pexpert/arm64/ANGELICAN.h
 new file mode 100644
 index 0000000..c93b444
@@ -145,7 +156,7 @@ index 8226b8c..ce1bf4b 100644
  
  # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
 diff --git a/pexpert/pexpert/arm64/board_config.h b/pexpert/pexpert/arm64/board_config.h
-index c84b210..a59aa98 100644
+index 9454534..cfbc990 100644
 --- a/pexpert/pexpert/arm64/board_config.h
 +++ b/pexpert/pexpert/arm64/board_config.h
 @@ -97,6 +97,16 @@
