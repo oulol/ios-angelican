@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-index 1f0543c..92b89d8 100644
+index e26a1d7..173d438 100644
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
 @@ -56,6 +56,7 @@
@@ -10,7 +10,7 @@ index 1f0543c..92b89d8 100644
  #include <arm/pmap.h>
  #include <arm/caches_internal.h>
  #include <arm/cpu_internal.h>
-@@ -345,6 +346,8 @@ arm_init(
+@@ -346,6 +347,8 @@ arm_init(
  	DTEntry chosen = NULL;
  	unsigned int dt_entry_size = 0;
  
@@ -19,7 +19,7 @@ index 1f0543c..92b89d8 100644
  	arm_setup_pre_sign();
  
  	arm_slide_rebase_and_sign_image();
-@@ -361,6 +364,7 @@ arm_init(
+@@ -362,6 +365,7 @@ arm_init(
  #endif /* defined(HAS_APPLE_PAC) */
  
  	PE_init_platform(FALSE, args); /* Get platform expert set up */
@@ -27,7 +27,7 @@ index 1f0543c..92b89d8 100644
  
  #if __arm64__
  	configure_timer_apple_regs();
-@@ -422,6 +426,7 @@ arm_init(
+@@ -423,6 +427,7 @@ arm_init(
  #endif
  
  	ml_parse_cpu_topology();
@@ -35,7 +35,7 @@ index 1f0543c..92b89d8 100644
  
  
  	master_cpu = ml_get_boot_cpu_number();
-@@ -452,11 +457,13 @@ arm_init(
+@@ -453,11 +458,13 @@ arm_init(
  	 */
  	thread->machine.preemption_count = 0;
  	cpu_bootstrap();
@@ -49,7 +49,7 @@ index 1f0543c..92b89d8 100644
  
  	/*
  	 * Initialize the timer callout world
-@@ -465,6 +472,7 @@ arm_init(
+@@ -466,6 +473,7 @@ arm_init(
  
  	cpu_init();
  
@@ -57,7 +57,7 @@ index 1f0543c..92b89d8 100644
  	processor_bootstrap();
  
  	if (PE_parse_boot_argn("maxmem", &maxmem, sizeof(maxmem))) {
-@@ -512,6 +520,7 @@ arm_init(
+@@ -513,6 +521,7 @@ arm_init(
  	__builtin_arm_wsr("pan", 1);
  #endif  /* __ARM_PAN_AVAILABLE__ */
  
@@ -252,110 +252,21 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 505533a..8746363 100644
+index e5336e5..260d536 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -40,7 +40,88 @@
- #include <arm/pmap.h>
- #endif /* __ARM_KERNEL_PROTECT__ */
- 
-+#if defined(ANGELICAN)
-+
-+.macro ANGELICAN_MARK stage
-+	stp x0, x1, [sp, #-16]!
-+    stp x2, x3, [sp, #-16]!
-+    stp x5, x7, [sp, #-16]!
-+    str x8, [sp, #-16]!
-+
-+    /* Framebuffer address: row = stage * 20 */
-+    movz    x0, #0x0000
-+    movk    x0, #0x7ec5, lsl #16
-+
-+    mov     x7, #0
-+    mov     x8, #2944
-+    madd    x0, x7, x8, x0
-+
-+        .if \stage == 0
-+        /* Red: 0xFFFF0000 */
-+        movz    w1, #0x0000
-+        movk    w1, #0xffff, lsl #16
-+
-+    .elseif \stage == 1
-+        /* Orange: 0xFFFF8000 */
-+        movz    w1, #0x8000
-+        movk    w1, #0xffff, lsl #16
-+
-+    .elseif \stage == 2
-+        /* Yellow: 0xFFFFFF00 */
-+        movz    w1, #0xff00
-+        movk    w1, #0xffff, lsl #16
-+
-+    .elseif \stage == 3
-+        /* Green: 0xFF00FF00 */
-+        movz    w1, #0xff00
-+        movk    w1, #0xff00, lsl #16
-+
-+    .elseif \stage == 4
-+        /* Cyan: 0xFF00FFFF */
-+        movz    w1, #0xffff
-+        movk    w1, #0xff00, lsl #16
-+
-+    .elseif \stage == 5
-+        /* Blue: 0xFF0000FF */
-+        movz    w1, #0x00ff
-+        movk    w1, #0xff00, lsl #16
-+
-+    .elseif \stage == 6
-+        /* Violet: 0xFF8000FF */
-+        movz    w1, #0x00ff
-+        movk    w1, #0xff80, lsl #16
-+    
-+    .else
-+        /* White: 0xFFFFFFFF */
-+        movz    w1, #0xffff
-+        movk    w1, #0xffff, lsl #16
-+    .endif
-+
-+    /* Draw 20 rows */
-+    mov     x2, #20
-+
-+.Langelican_row\@:
-+    mov     x3, #720
-+    mov     x5, x0
-+
-+.Langelican_pixel\@:
-+    str     w1, [x5], #4
-+    subs    x3, x3, #1
-+    b.ne   .Langelican_pixel\@
-+
-+    add    x0, x0, x8
-+    subs   x2, x2, #1
-+    b.ne   .Langelican_row\@
-+
-+    dsb    sy
-+
-+	ldr x8, [sp], #16
-+    ldp x5, x7, [sp], #16
-+    ldp x2, x3, [sp], #16
-+    ldp x0, x1, [sp], #16
-+.endm
- 
-+#endif
- 
- .macro MSR_VBAR_EL1_X0
- #if defined(KERNEL_INTEGRITY_KTRR)
-@@ -463,6 +544,25 @@ LEXT(start_first_cpu)
+@@ -463,6 +463,25 @@ LEXT(start_first_cpu)
  	mov		x20, x0
  	mov		x21, #0
  
 +#if defined(ANGELICAN)
-+	/* Stage 0: white 64x32 band, no stack or page tables needed. */
++	/* Stage 0: full white screen */
 +	MOV64	x0, 0x7EC50000
 +	mov		w1, #-1
-+	mov		x2, #32
++	mov		x2, #1600
 +	mov		x4, #2944
 +Langelican_mark_row:
-+	mov		x3, #64
++	mov		x3, #720
 +	mov		x5, x0
 +Langelican_mark_pixel:
 +	str		w1, [x5], #4
@@ -370,7 +281,7 @@ index 505533a..8746363 100644
  	// Set low reset vector before attempting any loads
  	adrp	x0, EXT(LowExceptionVectorBase)@page
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -605,6 +705,28 @@ Lkernelcache_base_found:
+@@ -605,6 +624,28 @@ Lkernelcache_base_found:
  	/* create_bootstrap_mapping(vbase, pbase, num_ents, L1 table, freeptr) */
  	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
  
@@ -399,47 +310,6 @@ index 505533a..8746363 100644
  	/* Setup the KVA bootstrap mapping */
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
-@@ -612,6 +734,9 @@ Lkernelcache_base_found:
- 	/* Ensure TTEs are visible */
- 	dsb		ish
- 
-+#if defined(ANGELICAN)
-+    ANGELICAN_MARK 1
-+#endif
- 
- 	b		common_start
- 
-@@ -658,6 +783,9 @@ common_start:
- 	mov		x19, lr
- 	bl		EXT(set_mmu_ttb)
- 	mov		lr, x19
-+#if defined(ANGELICAN)
-+    ANGELICAN_MARK 2
-+#endif
- 	add		x0, x25, PGBYTES
- 	and		x0, x0, #(TTBR_BADDR_MASK)
- 	MSR_TTBR1_EL1_X0
-@@ -745,6 +873,10 @@ common_start:
- 	MSR_SCTLR_EL1_X0
- 	isb		sy
- 
-+#if defined(ANGELICAN)
-+    ANGELICAN_MARK 3
-+#endif
-+
- 	MOV64   x1, SCTLR_EL1_DEFAULT
- 	cmp		x0, x1
- 	bne		.
-@@ -805,6 +937,9 @@ common_start:
- 	mov	lr, x21
- #endif
- 
-+#if defined(ANGELICAN)
-+    ANGELICAN_MARK 4
-+#endif
- 	// Return to arm_init()
- 	ret
- 
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 index c40d57b..5d0e3b0 100644
 --- a/osfmk/conf/files.arm64
@@ -453,7 +323,7 @@ index c40d57b..5d0e3b0 100644
  osfmk/arm/io_map.c		standard
  osfmk/arm64/loose_ends.c	standard
 diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
-index dbd23a4..eaddd4a 100644
+index 0a00656..5b045c1 100644
 --- a/osfmk/kern/debug.c
 +++ b/osfmk/kern/debug.c
 @@ -84,6 +84,9 @@
@@ -466,7 +336,7 @@ index dbd23a4..eaddd4a 100644
  #include <IOKit/IOBSD.h>
  
  #if !(MACH_KDP && CONFIG_KDP_INTERACTIVE_DEBUGGING)
-@@ -1072,6 +1075,11 @@ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsign
+@@ -1069,6 +1072,11 @@ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsign
  {
  #pragma clang diagnostic pop
  
