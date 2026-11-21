@@ -138,20 +138,6 @@ index 505533a..c8e2787 100644
  	// Set low reset vector before attempting any loads
  	adrp	x0, EXT(LowExceptionVectorBase)@page
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -744,10 +744,10 @@ common_start:
- 	MOV64   x0, SCTLR_EL1_DEFAULT
- 	MSR_SCTLR_EL1_X0
- 	isb		sy
--#if !VMAPPLE
-+#if !VMAPPLE && !defined(ANGELICAN)
- 	MOV64   x1, SCTLR_EL1_DEFAULT
- 	cmp		x0, x1
- 	bne		.
--#endif /* !VMAPPLE */
-+#endif /* !VMAPPLE && !ANGELICAN */
- 
- #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
- 	/* Watchtower
 diff --git a/pexpert/pexpert/arm64/Makefile b/pexpert/pexpert/arm64/Makefile
 index 8226b8c..ce1bf4b 100644
 --- a/pexpert/pexpert/arm64/Makefile
