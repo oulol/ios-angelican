@@ -252,7 +252,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 505533a..b86157c 100644
+index 505533a..8746363 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,7 +40,88 @@
@@ -344,44 +344,33 @@ index 505533a..b86157c 100644
  
  .macro MSR_VBAR_EL1_X0
  #if defined(KERNEL_INTEGRITY_KTRR)
-@@ -456,6 +537,36 @@ start_cpu:
- 	.globl EXT(start_first_cpu)
- LEXT(start_first_cpu)
+@@ -463,6 +544,25 @@ LEXT(start_first_cpu)
+ 	mov		x20, x0
+ 	mov		x21, #0
  
 +#if defined(ANGELICAN)
-+    /* Framebuffer physical address: 0x7EC50000 */
-+    movz    x9, #0x0000
-+    movk    x9, #0x7ec5, lsl #16
-+
-+    /* ARGB8888 opaque white: 0xFFFFFFFF */
-+    movn    w13, #0
-+
-+    /* 1600 rows */
-+    mov     x10, #1600
-+
-+1:
-+    /* 720 visible pixels */
-+    mov     x11, #720
-+    mov     x12, x9
-+
-+2:
-+    str     w13, [x12], #4
-+    subs    x11, x11, #1
-+    b.ne    2b
-+
-+    /* Advance by 2944 bytes */
-+    add     x9, x9, #2944
-+
-+    subs    x10, x10, #1
-+    b.ne    1b
-+
-+    dsb     sy
++	/* Stage 0: white 64x32 band, no stack or page tables needed. */
++	MOV64	x0, 0x7EC50000
++	mov		w1, #-1
++	mov		x2, #32
++	mov		x4, #2944
++Langelican_mark_row:
++	mov		x3, #64
++	mov		x5, x0
++Langelican_mark_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Langelican_mark_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Langelican_mark_row
++	dsb		sy
 +#endif
 +
- 	// Unlock the core for debugging
- 	msr		OSLAR_EL1, xzr
- 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
-@@ -605,6 +716,28 @@ Lkernelcache_base_found:
+ 	// Set low reset vector before attempting any loads
+ 	adrp	x0, EXT(LowExceptionVectorBase)@page
+ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
+@@ -605,6 +705,28 @@ Lkernelcache_base_found:
  	/* create_bootstrap_mapping(vbase, pbase, num_ents, L1 table, freeptr) */
  	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
  
@@ -410,7 +399,7 @@ index 505533a..b86157c 100644
  	/* Setup the KVA bootstrap mapping */
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
-@@ -612,6 +745,9 @@ Lkernelcache_base_found:
+@@ -612,6 +734,9 @@ Lkernelcache_base_found:
  	/* Ensure TTEs are visible */
  	dsb		ish
  
@@ -420,7 +409,7 @@ index 505533a..b86157c 100644
  
  	b		common_start
  
-@@ -658,6 +794,9 @@ common_start:
+@@ -658,6 +783,9 @@ common_start:
  	mov		x19, lr
  	bl		EXT(set_mmu_ttb)
  	mov		lr, x19
@@ -430,7 +419,7 @@ index 505533a..b86157c 100644
  	add		x0, x25, PGBYTES
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
-@@ -745,6 +884,10 @@ common_start:
+@@ -745,6 +873,10 @@ common_start:
  	MSR_SCTLR_EL1_X0
  	isb		sy
  
@@ -441,7 +430,7 @@ index 505533a..b86157c 100644
  	MOV64   x1, SCTLR_EL1_DEFAULT
  	cmp		x0, x1
  	bne		.
-@@ -805,6 +948,9 @@ common_start:
+@@ -805,6 +937,9 @@ common_start:
  	mov	lr, x21
  #endif
  
