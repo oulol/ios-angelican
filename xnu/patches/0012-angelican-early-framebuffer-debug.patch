@@ -321,7 +321,7 @@ index e5336e5..9d8701c 100644
  	mov		x21, #0
  
 +#if defined(ANGELICAN)
-+    ANGELICAN_MARKER x9, 0, x10, x11, x12, x13
++    ANGELICAN_MARKER x9, 0, x10, x11, x12, w13
 +#endif
 +
  	// Set low reset vector before attempting any loads
@@ -332,7 +332,7 @@ index e5336e5..9d8701c 100644
  	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x16, 1, x17, x18, x19, x8
++	ANGELICAN_MARKER x16, 1, x17, x18, x19, w8
 +#endif
 +
 +#if defined(ANGELICAN)
@@ -366,7 +366,7 @@ index e5336e5..9d8701c 100644
  
 -
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x16, 2, x17, x18, x19, x8
++	ANGELICAN_MARKER x16, 2, x17, x18, x19, w8
 +#endif
  	b		common_start
  
@@ -376,7 +376,7 @@ index e5336e5..9d8701c 100644
  common_start:
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 3, x10, x11, x12, x13
++	ANGELICAN_MARKER x9, 3, x10, x11, x12, w13
 +#endif
 +
  #if HAS_NEX_PG
@@ -387,7 +387,7 @@ index e5336e5..9d8701c 100644
  	MSR_TTBR1_EL1_X0
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 4, x10, x11, x12, x13
++	ANGELICAN_MARKER x9, 4, x10, x11, x12, w13
 +#endif
 +
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
@@ -398,7 +398,7 @@ index e5336e5..9d8701c 100644
  	dsb		ish
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 5, x10, x11, x12, x13
++	ANGELICAN_MARKER x9, 5, x10, x11, x12, w13
 +#endif
 +
  
@@ -409,7 +409,7 @@ index e5336e5..9d8701c 100644
  #endif /* !VMAPPLE && !ANGELICAN */
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 6, x10, x11, x12, x13
++	ANGELICAN_MARKER x9, 6, x10, x11, x12, w13
 +#endif
 +
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
@@ -420,7 +420,7 @@ index e5336e5..9d8701c 100644
  #endif
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 7, x10, x11, x12, x13
++	ANGELICAN_MARKER x9, 7, x10, x11, x12, w13
 +#endif
 +
  	// Return to arm_init()
