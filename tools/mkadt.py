@@ -18,6 +18,14 @@ REPO = HERE.parent
 sys.path.insert(0, str(HERE))
 import adt  # noqa: E402
 
+# Runtime FDT diagnostics from the Redmi 9C NFC:
+#   /memory: base=0x40000000, size=0xC0000000 (3 GiB)
+#
+# The extracted stock DTB only describes 512 MiB, so do not use its
+# memory node as the authoritative RAM configuration.
+DEFAULT_RAM_BASE = 0x40000000
+DEFAULT_RAM_SIZE = 0xC0000000
+
 # Confirmed from the Redmi 9C NFC shim/device diagnostics. These are not in
 # the stock DTB's mtkfb node.
 DEFAULT_FB_BASE = 0x7EC50000
@@ -261,16 +269,23 @@ def build_angelica_adt(hw, args):
     dram_base = hw["ram_base"]
     dram_size = hw["ram_size"]
     panic_size = args.panic_log_size
-    if panic_size < 0 or panic_size >= dram_size:
-        raise ValueError("panic-log size must be nonnegative and smaller than RAM")
+
+    if dram_base < 0 or dram_size <= 0:
+        raise ValueError("Invalid RAM range")
+
+    if dram_base + dram_size > 0x10000000000000000:
+        raise ValueError("RAM range exceeds 64-bit address space")
+
+    if panic_size < 0 or panic_size > dram_size:
+        raise ValueError("Invalid panic-log size")
+
     panic_base = dram_base + dram_size - panic_size if panic_size else 0
-    managed_size = dram_size - panic_size
 
     chosen_children = [make_node("memory-map", [prop_phandle(ph)])]
     chosen_props = [
         prop_phandle(ph),
         ("dram-base", u64(dram_base)),
-        ("dram-size", u64(managed_size)),
+        ("dram-size", u64(dram_size)),
         ("random-seed", os.urandom(64)),
         ("debug-enabled", u32(1)),
         ("embedded-panic-log-size", u32(panic_size)),
@@ -382,34 +397,125 @@ def build_angelica_adt(hw, args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+
+    # Input/output
+    ap.add_argument("dtb", type=Path, help="input Linux/Android DTB")
     ap.add_argument("out", type=Path, help="output Apple Device Tree (.adt)")
-    ap.add_argument("--panic-log-size", type=lambda x: int(x, 0), default=DEFAULT_PANIC_LOG_SIZE)
-    ap.add_argument("--soc-base", type=lambda x: int(x, 0), default=DEFAULT_SOC_BASE)
+
+    # Runtime memory configuration
+    ap.add_argument(
+        "--ram-base",
+        type=lambda x: int(x, 0),
+        default=DEFAULT_RAM_BASE,
+        help="physical RAM base (default: runtime FDT value)",
+    )
+    ap.add_argument(
+        "--ram-size",
+        type=lambda x: int(x, 0),
+        default=DEFAULT_RAM_SIZE,
+        help="physical RAM size (default: runtime FDT value)",
+    )
+
+    # Memory carve-outs
+    ap.add_argument(
+        "--panic-log-size",
+        type=lambda x: int(x, 0),
+        default=DEFAULT_PANIC_LOG_SIZE,
+    )
+
+    # SoC
+    ap.add_argument(
+        "--soc-base",
+        type=lambda x: int(x, 0),
+        default=DEFAULT_SOC_BASE,
+    )
+
+    # Framebuffer
     ap.add_argument("--fb-base", type=lambda x: int(x, 0), default=DEFAULT_FB_BASE)
     ap.add_argument("--fb-size", type=lambda x: int(x, 0), default=DEFAULT_FB_SIZE)
     ap.add_argument("--fb-width", type=int, default=DEFAULT_FB_WIDTH)
     ap.add_argument("--fb-height", type=int, default=DEFAULT_FB_HEIGHT)
     ap.add_argument("--fb-stride", type=int, default=DEFAULT_FB_STRIDE)
+
+    # Device identity/display
     ap.add_argument("--display-scale", type=int, default=2)
-    ap.add_argument("--ecid", type=lambda x: int(x, 0), default=0x414E47454C494341)
-    ap.add_argument("--chip-id", type=lambda x: int(x, 0), default=0x6765)
+    ap.add_argument(
+        "--ecid",
+        type=lambda x: int(x, 0),
+        default=0x414E47454C494341,
+    )
+    ap.add_argument(
+        "--chip-id",
+        type=lambda x: int(x, 0),
+        default=0x6765,
+    )
+
     ap.add_argument("--dump", action="store_true", help="dump the generated ADT")
+
     a = ap.parse_args()
 
-    hw = extract_hardware("./unpacked/dtb")
-    print(f"RAM: 0x{hw['ram_base']:x} + 0x{hw['ram_size']:x}")
-    print(f"CPUs: {len(hw['cpus'])}; MPIDRs: " +
-          ", ".join(f"0x{x[0]:x}" for x in hw["cpus"]))
+    # Validate the explicit physical memory configuration.
+    if a.ram_base < 0 or a.ram_size <= 0:
+        ap.error("--ram-base must be nonnegative and --ram-size must be positive")
+
+    if a.ram_base + a.ram_size > 0x10000000000000000:
+        ap.error("RAM range exceeds the 64-bit physical address space")
+
+    # Extract hardware information from the stock DTB.
+    hw = extract_hardware(a.dtb)
+
+    # Override stock DTB RAM information with the runtime FDT configuration.
+    stock_ram_base = hw["ram_base"]
+    stock_ram_size = hw["ram_size"]
+
+    hw["ram_base"] = a.ram_base
+    hw["ram_size"] = a.ram_size
+
+    print(
+        f"Stock DTB RAM: 0x{stock_ram_base:x} + 0x{stock_ram_size:x}"
+    )
+    print(
+        f"Runtime RAM:   0x{hw['ram_base']:x} + 0x{hw['ram_size']:x}"
+    )
+    print(
+        f"Runtime RAM end: 0x{hw['ram_base'] + hw['ram_size']:x}"
+    )
+
+    print(
+        f"CPUs: {len(hw['cpus'])}; MPIDRs: "
+        + ", ".join(f"0x{x[0]:x}" for x in hw["cpus"])
+    )
     print(f"GICD: 0x{hw['gicd'][0]:x} size 0x{hw['gicd'][1]:x}")
     print(f"GICR: 0x{hw['gicr'][0]:x} size 0x{hw['gicr'][1]:x}")
-    print(f"Generic timer: {hw['timer_frequency']} Hz; virtual timer INTID {hw['vtimer_intid']}")
-    print("WARNING: reserved-memory carve-outs are not yet subtracted from dram-base/dram-size")
+    print(
+        f"Generic timer: {hw['timer_frequency']} Hz; "
+        f"virtual timer INTID {hw['vtimer_intid']}"
+    )
 
+    panic_size = a.panic_log_size
+    if panic_size < 0 or panic_size >= hw["ram_size"]:
+        ap.error("--panic-log-size must be nonnegative and smaller than RAM")
+
+    if panic_size:
+        panic_base = hw["ram_base"] + hw["ram_size"] - panic_size
+        print(
+            f"Panic log:    0x{panic_base:x} + 0x{panic_size:x}"
+        )
+
+    print(
+        "WARNING: runtime FDT reserved-memory regions and reservation-map "
+        "entries are not yet subtracted from the ADT DRAM range."
+    )
+
+    # Build and serialize ADT.
     blob = adt.serialize(build_angelica_adt(hw, a))
+
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_bytes(blob)
+
     if a.dump:
         adt.dump(adt.parse(blob)[0])
+
     print(f"{a.out}: {len(blob)} bytes")
 
 
