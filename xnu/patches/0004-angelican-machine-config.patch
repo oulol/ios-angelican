@@ -123,6 +123,34 @@ index 0000000..7306b50
 +
 +#endif /* ! _PEXPERT_ARM64_ANGELICAN_H */
 \ No newline at end of file
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index 505533a..c8e2787 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -463,6 +463,10 @@ LEXT(start_first_cpu)
+ 	mov		x20, x0
+ 	mov		x21, #0
+ 
++#if defined(ANGELICAN)
++	brk #0xF
++#endif
++
+ 	// Set low reset vector before attempting any loads
+ 	adrp	x0, EXT(LowExceptionVectorBase)@page
+ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
+@@ -744,10 +748,11 @@ common_start:
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
+-
++#if !defined(ANGELICAN)
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
+ 	cmp		x0, x1
+ 	bne		.
++#endif /* !ANGELICAN */
+ 
+ #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
+ 	/* Watchtower
 diff --git a/pexpert/pexpert/arm64/Makefile b/pexpert/pexpert/arm64/Makefile
 index 8226b8c..ce1bf4b 100644
 --- a/pexpert/pexpert/arm64/Makefile
