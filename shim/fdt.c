@@ -1,277 +1,836 @@
+/*
+ * Freestanding flattened-device-tree parser for the Angelican boot shim.
+ *
+ * No libfdt, libc, malloc, memcpy, or memset required.
+ */
 #include "fdt.h"
+#include "console.h"
 
-#include <stdint.h>
-#include <limits.h>
+#include <stddef.h>
 
-#define FDT_MAGIC       0xd00dfeedU
+#define FDT_MAGIC       0xd00dfeedu
+#define FDT_BEGIN_NODE  1u
+#define FDT_END_NODE    2u
+#define FDT_PROP        3u
+#define FDT_NOP         4u
+#define FDT_END         9u
+#define FDT_HEADER_SIZE 40u
+#define FDT_MAX_DEPTH   32u
 
-#define FDT_BEGIN_NODE  1U
-#define FDT_END_NODE    2U
-#define FDT_PROP        3U
-#define FDT_NOP         4U
-#define FDT_END         9U
+struct fdt_view {
+    const uint8_t *blob;
+    const uint8_t *structure;
+    const uint8_t *strings;
+    uint32_t total_size;
+    uint32_t structure_size;
+    uint32_t strings_size;
+    uint32_t reserve_offset;
+    uint32_t structure_offset;
+};
 
-#define FDT_HEADER_SIZE 40U
+struct fdt_node_state {
+    const uint8_t *name;
+    uint32_t name_length;
+    uint32_t address_cells;
+    uint32_t size_cells;
+    uint32_t parent_address_cells;
+    uint32_t parent_size_cells;
+    const uint8_t *reg_data;
+    uint32_t reg_length;
+    uint8_t is_root;
+    uint8_t is_memory;
+    uint8_t is_reserved_root;
+    uint8_t is_reserved_child;
+    uint8_t has_reg;
+    uint8_t has_dynamic_request;
+    uint8_t disabled;
+    uint8_t ranges_nonempty;
+};
 
-static uint32_t read_be32(uintptr_t address)
+static uint32_t be32(const uint8_t *p)
 {
-    volatile const uint8_t *p =
-        (volatile const uint8_t *)address;
-
     return ((uint32_t)p[0] << 24) |
            ((uint32_t)p[1] << 16) |
            ((uint32_t)p[2] << 8) |
-           ((uint32_t)p[3]);
+           (uint32_t)p[3];
 }
 
-static uint64_t read_be64(uintptr_t address)
+static uint64_t be64(const uint8_t *p)
 {
-    return ((uint64_t)read_be32(address) << 32) |
-           read_be32(address + 4);
+    return ((uint64_t)be32(p) << 32) | be32(p + 4);
 }
 
-static int range_valid(uint32_t offset, uint32_t length, uint32_t total)
+static uint32_t align4_u32(uint32_t value)
 {
-    return offset <= total && length <= total - offset;
+    return (value + 3u) & ~3u;
 }
 
-static uint32_t align4(uint32_t value)
+static int bytes_name_equal(const uint8_t *p, uint32_t length,
+                            const char *text)
 {
-    return (value + 3U) & ~3U;
-}
-
-static int string_equal(
-    uintptr_t address,
-    uint32_t available,
-    const char *expected
-)
-{
-    volatile const char *p =
-        (volatile const char *)address;
-
     uint32_t i = 0;
 
-    while (i < available && expected[i] && p[i] == expected[i]) {
+    while (text[i]) {
+        if (i >= length || p[i] != (uint8_t)text[i])
+            return 0;
         i++;
     }
 
-    return i < available &&
-           p[i] == '\0' &&
-           expected[i] == '\0';
+    return i == length;
+}
+
+static int bytes_value_equal(const uint8_t *p, uint32_t length,
+                             const char *text)
+{
+    uint32_t i = 0;
+
+    while (text[i]) {
+        if (i >= length || p[i] != (uint8_t)text[i])
+            return 0;
+        i++;
+    }
+
+    return i < length && p[i] == 0;
+}
+
+static int bytes_cstr_equal(const uint8_t *p, uint32_t available,
+                            const char *text)
+{
+    uint32_t i = 0;
+
+    while (text[i]) {
+        if (i >= available || p[i] != (uint8_t)text[i])
+            return 0;
+        i++;
+    }
+
+    return i < available && p[i] == 0;
+}
+
+static int node_name_is_memory(const uint8_t *name, uint32_t length)
+{
+    static const char prefix[] = "memory";
+
+    for (uint32_t i = 0; i < sizeof(prefix) - 1; i++) {
+        if (i >= length || name[i] != (uint8_t)prefix[i])
+            return 0;
+    }
+
+    return length == sizeof(prefix) - 1 ||
+           name[sizeof(prefix) - 1] == '@';
+}
+
+static int open_fdt(uintptr_t address, struct fdt_view *view)
+{
+    const uint8_t *blob = (const uint8_t *)address;
+    uint32_t total_size, off_struct, off_strings, off_reserve;
+    uint32_t size_strings, size_struct;
+
+    if (!address || (address & 7u) || be32(blob) != FDT_MAGIC)
+        return 0;
+
+    total_size = be32(blob + 4);
+    off_struct = be32(blob + 8);
+    off_strings = be32(blob + 12);
+    off_reserve = be32(blob + 16);
+    size_strings = be32(blob + 32);
+    size_struct = be32(blob + 36);
+
+    if (total_size < FDT_HEADER_SIZE ||
+        off_struct < FDT_HEADER_SIZE || off_struct > total_size ||
+        off_strings < FDT_HEADER_SIZE || off_strings > total_size ||
+        off_reserve < FDT_HEADER_SIZE || off_reserve > total_size ||
+        (off_struct & 3u) || (off_strings & 3u) || (off_reserve & 7u))
+        return 0;
+
+    /* For old/vendor headers with a zero structure size, use the next block. */
+    if (!size_struct) {
+        if (off_strings <= off_struct)
+            return 0;
+        size_struct = off_strings - off_struct;
+    }
+    if (!size_strings)
+        size_strings = total_size - off_strings;
+
+    if (size_struct > total_size - off_struct ||
+        size_strings > total_size - off_strings)
+        return 0;
+
+    view->blob = blob;
+    view->structure = blob + off_struct;
+    view->strings = blob + off_strings;
+    view->total_size = total_size;
+    view->structure_size = size_struct;
+    view->strings_size = size_strings;
+    view->reserve_offset = off_reserve;
+    view->structure_offset = off_struct;
+    return 1;
+}
+
+static int validate_reserve_map(const struct fdt_view *view)
+{
+    uint32_t off = view->reserve_offset;
+
+    /* The terminator must occur before the structure block begins. */
+    while (off <= view->structure_offset &&
+           view->structure_offset - off >= 16u) {
+        uint64_t base = be64(view->blob + off);
+        uint64_t size = be64(view->blob + off + 8);
+        off += 16;
+
+        if (!base && !size)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int validate_structure(const struct fdt_view *view)
+{
+    uint32_t pos = 0;
+    uint32_t depth = 0;
+
+    while (pos <= view->structure_size &&
+           view->structure_size - pos >= 4u) {
+        uint32_t token = be32(view->structure + pos);
+        pos += 4;
+
+        if (token == FDT_BEGIN_NODE) {
+            while (pos < view->structure_size && view->structure[pos] != 0)
+                pos++;
+            if (pos >= view->structure_size || depth >= FDT_MAX_DEPTH)
+                return 0;
+            pos = align4_u32(pos + 1u);
+            if (pos > view->structure_size)
+                return 0;
+            depth++;
+            continue;
+        }
+
+        if (token == FDT_END_NODE) {
+            if (!depth)
+                return 0;
+            depth--;
+            continue;
+        }
+
+        if (token == FDT_PROP) {
+            uint32_t length, nameoff;
+            uint32_t i;
+
+            if (!depth || view->structure_size - pos < 8u)
+                return 0;
+
+            length = be32(view->structure + pos);
+            nameoff = be32(view->structure + pos + 4);
+            pos += 8;
+
+            if (length > view->structure_size - pos ||
+                nameoff >= view->strings_size)
+                return 0;
+
+            for (i = nameoff; i < view->strings_size; i++) {
+                if (view->strings[i] == 0)
+                    break;
+            }
+            if (i == view->strings_size)
+                return 0;
+
+            pos = align4_u32(pos + length);
+            if (pos > view->structure_size)
+                return 0;
+            continue;
+        }
+
+        if (token == FDT_NOP)
+            continue;
+
+        if (token == FDT_END)
+            return depth == 0;
+
+        return 0;
+    }
+
+    return 0;
 }
 
 int fdt_validate(uintptr_t fdt, uint32_t *total_size)
 {
-    if (!fdt || fdt > UINTPTR_MAX - FDT_HEADER_SIZE)
+    struct fdt_view view;
+
+    if (!open_fdt(fdt, &view)) {
+        con_str("FDT validate", "header/block bounds failed");
         return 0;
-
-    if (read_be32(fdt) != FDT_MAGIC)
+    }
+    if (!validate_reserve_map(&view)) {
+        con_str("FDT validate", "reservation map is malformed");
+        con_hex("FDT reserve offset", view.reserve_offset);
+        con_hex("FDT structure offset", view.structure_offset);
         return 0;
-
-    uint32_t total = read_be32(fdt + 4);
-
-    if (total < FDT_HEADER_SIZE)
+    }
+    if (!validate_structure(&view)) {
+        con_str("FDT validate", "structure tokens are malformed");
         return 0;
-
-    if (fdt > UINTPTR_MAX - total)
-        return 0;
-
-    uint32_t struct_offset = read_be32(fdt + 8);
-    uint32_t strings_offset = read_be32(fdt + 12);
-
-    uint32_t version = read_be32(fdt + 20);
-
-    if (version < 16)
-        return 0;
-
-    uint32_t strings_size = read_be32(fdt + 32);
-    uint32_t struct_size = read_be32(fdt + 36);
-
-    if ((struct_offset & 3U) != 0)
-        return 0;
-
-    if (!range_valid(struct_offset, struct_size, total))
-        return 0;
-
-    if (!range_valid(strings_offset, strings_size, total))
-        return 0;
-
-    if (struct_size < 4)
-        return 0;
+    }
 
     if (total_size)
-        *total_size = total;
-
+        *total_size = view.total_size;
     return 1;
 }
 
-int fdt_get_chosen_property(
-    uintptr_t fdt,
-    const char *name,
-    uintptr_t *value,
-    uint32_t *length
-)
+int fdt_get_chosen_property(uintptr_t fdt, const char *name,
+                            uintptr_t *value, uint32_t *length)
 {
-    uint32_t total;
-
-    if (!name || !value || !length)
-        return 0;
-
-    if (!fdt_validate(fdt, &total))
-        return 0;
-
-    uint32_t struct_offset = read_be32(fdt + 8);
-    uint32_t strings_offset = read_be32(fdt + 12);
-
-    uint32_t strings_size = read_be32(fdt + 32);
-    uint32_t struct_size = read_be32(fdt + 36);
-
-    uint32_t pos = struct_offset;
-    uint32_t end = struct_offset + struct_size;
-
+    struct fdt_view view;
+    uint8_t chosen[FDT_MAX_DEPTH];
+    uint32_t pos = 0;
     uint32_t depth = 0;
-    int in_chosen = 0;
 
-    while (pos <= end && end - pos >= 4) {
-        uint32_t token = read_be32(fdt + pos);
+    if (!name || !value || !length || !open_fdt(fdt, &view))
+        return 0;
+
+    while (pos <= view.structure_size &&
+           view.structure_size - pos >= 4u) {
+        uint32_t token = be32(view.structure + pos);
         pos += 4;
 
-        switch (token) {
-        case FDT_BEGIN_NODE: {
+        if (token == FDT_BEGIN_NODE) {
             uint32_t name_start = pos;
+            uint32_t name_length;
 
-            while (pos < end &&
-                   *(volatile const uint8_t *)(fdt + pos) != 0) {
+            while (pos < view.structure_size && view.structure[pos] != 0)
                 pos++;
-            }
-
-            if (pos >= end)
+            if (pos >= view.structure_size || depth >= FDT_MAX_DEPTH)
                 return 0;
 
-            uint32_t name_length = pos - name_start;
-
+            name_length = pos - name_start;
+            chosen[depth] = (uint8_t)(depth == 1 &&
+                bytes_name_equal(view.structure + name_start,
+                                 name_length, "chosen"));
+            pos = align4_u32(pos + 1u);
+            if (pos > view.structure_size)
+                return 0;
             depth++;
-
-            if (depth == 2) {
-                in_chosen =
-                    name_length == 6 &&
-                    string_equal(
-                        fdt + name_start,
-                        name_length + 1,
-                        "chosen"
-                    );
-            }
-
-            pos++;
-
-            if (pos > UINT32_MAX - 3)
-                return 0;
-
-            pos = align4(pos);
-
-            if (pos > end)
-                return 0;
-
-            break;
+            continue;
         }
 
-        case FDT_END_NODE:
-            if (depth == 0)
+        if (token == FDT_END_NODE) {
+            if (!depth)
                 return 0;
-
-            if (depth == 2)
-                in_chosen = 0;
-
             depth--;
-            break;
+            continue;
+        }
 
-        case FDT_PROP: {
-            if (depth == 0 || end - pos < 8)
+        if (token == FDT_PROP) {
+            uint32_t prop_length, nameoff;
+            uintptr_t prop_value;
+
+            if (!depth || view.structure_size - pos < 8u)
                 return 0;
 
-            uint32_t prop_length = read_be32(fdt + pos);
-            uint32_t name_offset = read_be32(fdt + pos + 4);
-
+            prop_length = be32(view.structure + pos);
+            nameoff = be32(view.structure + pos + 4);
             pos += 8;
+            prop_value = (uintptr_t)(view.structure + pos);
 
-            if (!range_valid(pos, prop_length, end))
+            if (prop_length > view.structure_size - pos ||
+                nameoff >= view.strings_size)
                 return 0;
 
-            if (name_offset >= strings_size)
-                return 0;
-
-            uint32_t name_available =
-                strings_size - name_offset;
-
-            if (in_chosen && depth == 2 &&
-                string_equal(
-                    fdt + strings_offset + name_offset,
-                    name_available,
-                    name
-                )) {
-
-                *value = fdt + pos;
+            if (chosen[depth - 1] &&
+                bytes_cstr_equal(view.strings + nameoff,
+                                 view.strings_size - nameoff, name)) {
+                *value = prop_value;
                 *length = prop_length;
-
                 return 1;
             }
 
-            if (prop_length > UINT32_MAX - 3)
+            pos = align4_u32(pos + prop_length);
+            if (pos > view.structure_size)
                 return 0;
-
-            uint32_t aligned_length = align4(prop_length);
-
-            if (!range_valid(pos, aligned_length, end))
-                return 0;
-
-            pos += aligned_length;
-            break;
+            continue;
         }
 
-        case FDT_NOP:
-            break;
-
-        case FDT_END:
+        if (token == FDT_NOP)
+            continue;
+        if (token == FDT_END)
             return 0;
-
-        default:
-            return 0;
-        }
+        return 0;
     }
 
     return 0;
 }
 
-int fdt_chosen_u64(
-    uintptr_t fdt,
-    const char *name,
-    uint64_t *out
-)
+int fdt_chosen_u64(uintptr_t fdt, const char *name, uint64_t *out)
 {
     uintptr_t value;
     uint32_t length;
 
-    if (!out)
+    if (!out || !fdt_get_chosen_property(fdt, name, &value, &length))
         return 0;
 
-    if (!fdt_get_chosen_property(
-            fdt,
-            name,
-            &value,
-            &length
-        )) {
+    if (length == 4)
+        *out = be32((const uint8_t *)value);
+    else if (length == 8)
+        *out = be64((const uint8_t *)value);
+    else
         return 0;
+
+    return 1;
+}
+
+int fdt_add_range(phys_range_t *ranges, uint32_t *count,
+                  uint32_t capacity, uint64_t base, uint64_t size)
+{
+    uint64_t end;
+
+    if (!size)
+        return 1;
+    if (base + size < base)
+        return 0;
+    end = base + size;
+    (void)end;
+
+    /* Avoid duplicate entries from overlapping FDT reservation mechanisms. */
+    for (uint32_t i = 0; i < *count; i++) {
+        if (ranges[i].base == base && ranges[i].size == size)
+            return 1;
     }
 
-    if (length == 4) {
-        *out = read_be32(value);
+    if (*count >= capacity)
+        return 0;
+
+    ranges[*count].base = base;
+    ranges[*count].size = size;
+    (*count)++;
+    return 1;
+}
+
+static int read_cells(const uint8_t *p, uint32_t cells, uint64_t *value)
+{
+    if (cells == 1) {
+        *value = be32(p);
         return 1;
     }
-
-    if (length == 8) {
-        *out = read_be64(value);
+    if (cells == 2) {
+        *value = be64(p);
         return 1;
+    }
+    return 0;
+}
+
+static int parse_reg(const uint8_t *data, uint32_t length,
+                     uint32_t address_cells, uint32_t size_cells,
+                     phys_range_t *ranges, uint32_t *count,
+                     uint32_t capacity)
+{
+    uint32_t tuple_cells = address_cells + size_cells;
+    uint32_t tuple_size;
+
+    if (!address_cells || !size_cells ||
+        address_cells > 2 || size_cells > 2)
+        return 0;
+
+    tuple_size = tuple_cells * 4u;
+    if (!tuple_size || (length % tuple_size))
+        return 0;
+
+    for (uint32_t off = 0; off < length; off += tuple_size) {
+        uint64_t base, size;
+
+        if (!read_cells(data + off, address_cells, &base) ||
+            !read_cells(data + off + address_cells * 4u,
+                        size_cells, &size))
+            return 0;
+
+        if (!fdt_add_range(ranges, count, capacity, base, size))
+            return 0;
+    }
+
+    return 1;
+}
+
+static int parse_reservation_map(const struct fdt_view *view,
+                                 fdt_layout_t *layout)
+{
+    uint32_t off = view->reserve_offset;
+
+    while (off <= view->structure_offset &&
+           view->structure_offset - off >= 16u) {
+        uint64_t base = be64(view->blob + off);
+        uint64_t size = be64(view->blob + off + 8u);
+        off += 16u;
+
+        if (!base && !size)
+            return 1;
+
+        if (!fdt_add_range(layout->reserved, &layout->reserved_count,
+                           FDT_MAX_RESERVED, base, size))
+            return 0;
     }
 
     return 0;
+}
+
+int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
+{
+    struct fdt_view view;
+    struct fdt_node_state stack[FDT_MAX_DEPTH];
+    uint32_t pos = 0;
+    uint32_t depth = 0;
+    uint32_t last_token = 0;
+    int saw_end = 0;
+    int reserved_ranges_unsupported = 0;
+
+    if (!layout) {
+        con_str("FDT parse", "NULL layout output");
+        return 0;
+    }
+    if (!open_fdt(fdt_address, &view)) {
+        con_str("FDT parse", "open_fdt/header failed");
+        return 0;
+    }
+
+    layout->memory_count = 0;
+    layout->reserved_count = 0;
+    layout->unresolved_count = 0;
+    layout->total_ram_size = 0;
+    layout->dram_base = UINT64_MAX;
+    layout->dram_end = 0;
+    layout->total_size = view.total_size;
+
+    if (!parse_reservation_map(&view, layout)) {
+        con_str("FDT parse", "reservation-map parse failed");
+        return 0;
+    }
+
+    while (pos <= view.structure_size &&
+           view.structure_size - pos >= 4u) {
+        uint32_t token = be32(view.structure + pos);
+        uint32_t token_pos = pos;
+        pos += 4u;
+        last_token = token;
+
+        if (token == FDT_BEGIN_NODE) {
+            uint32_t name_start = pos;
+            struct fdt_node_state *node;
+            struct fdt_node_state *parent = depth ? &stack[depth - 1] : 0;
+
+            if (depth >= FDT_MAX_DEPTH) {
+                con_str("FDT parse", "node depth limit exceeded");
+                con_hex("FDT token offset", token_pos);
+                return 0;
+            }
+
+            while (pos < view.structure_size && view.structure[pos] != 0)
+                pos++;
+            if (pos >= view.structure_size) {
+                con_str("FDT parse", "unterminated node name");
+                con_hex("FDT token offset", token_pos);
+                return 0;
+            }
+
+            node = &stack[depth];
+            node->name = view.structure + name_start;
+            node->name_length = pos - name_start;
+            node->parent_address_cells = parent ? parent->address_cells : 2;
+            node->parent_size_cells = parent ? parent->size_cells : 1;
+            node->address_cells = node->parent_address_cells;
+            node->size_cells = node->parent_size_cells;
+            node->reg_data = 0;
+            node->reg_length = 0;
+            node->is_root = (uint8_t)(depth == 0);
+            node->is_memory = (uint8_t)(depth == 1 &&
+                node_name_is_memory(node->name, node->name_length));
+            node->is_reserved_root = (uint8_t)(depth == 1 &&
+                bytes_name_equal(node->name, node->name_length,
+                                 "reserved-memory"));
+            node->is_reserved_child = (uint8_t)(parent &&
+                                                parent->is_reserved_root);
+            node->has_reg = 0;
+            node->has_dynamic_request = 0;
+            node->disabled = 0;
+            node->ranges_nonempty = 0;
+
+            pos = align4_u32(pos + 1u);
+            if (pos > view.structure_size) {
+                con_str("FDT parse", "node-name alignment out of bounds");
+                con_hex("FDT token offset", token_pos);
+                return 0;
+            }
+            depth++;
+            continue;
+        }
+
+        if (token == FDT_END_NODE) {
+            struct fdt_node_state *node;
+
+            if (!depth) {
+                con_str("FDT parse", "END_NODE at depth zero");
+                con_hex("FDT token offset", token_pos);
+                return 0;
+            }
+            node = &stack[depth - 1];
+
+            if (node->is_memory && !node->disabled) {
+                if (!node->has_reg) {
+                    con_str("FDT parse", "memory node has no reg");
+                    con_str("FDT node", (const char *)node->name);
+                    return 0;
+                }
+                if (!parse_reg(node->reg_data, node->reg_length,
+                               node->parent_address_cells,
+                               node->parent_size_cells,
+                               layout->memory,
+                               &layout->memory_count,
+                               FDT_MAX_MEMORY_RANGES)) {
+                    con_str("FDT parse", "invalid memory reg property");
+                    con_str("FDT node", (const char *)node->name);
+                    con_hex("reg length", node->reg_length);
+                    con_hex("address cells", node->parent_address_cells);
+                    con_hex("size cells", node->parent_size_cells);
+                    return 0;
+                }
+            }
+
+            if (node->is_reserved_root && node->ranges_nonempty) {
+                reserved_ranges_unsupported = 1;
+                con_str("FDT parse", "reserved-memory ranges is nonempty");
+                con_hex("ranges length", node->reg_length);
+            }
+
+            if (node->is_reserved_child && !node->disabled) {
+                if (node->has_reg) {
+                    if (!parse_reg(node->reg_data, node->reg_length,
+                                   node->parent_address_cells,
+                                   node->parent_size_cells,
+                                   layout->reserved,
+                                   &layout->reserved_count,
+                                   FDT_MAX_RESERVED)) {
+                        con_str("FDT parse", "invalid reserved-memory reg");
+                        con_str("FDT node", (const char *)node->name);
+                        con_hex("reg length", node->reg_length);
+                        con_hex("address cells", node->parent_address_cells);
+                        con_hex("size cells", node->parent_size_cells);
+                        return 0;
+                    }
+                } else if (node->has_dynamic_request) {
+                    layout->unresolved_count++;
+                    con_str("FDT unresolved reservation",
+                            (const char *)node->name);
+                }
+            }
+
+            depth--;
+            continue;
+        }
+
+        if (token == FDT_NOP)
+            continue;
+
+        if (token == FDT_END) {
+            if (depth != 0) {
+                con_str("FDT parse", "END token with unclosed nodes");
+                con_hex("FDT depth", depth);
+                con_hex("FDT token offset", token_pos);
+                return 0;
+            }
+            saw_end = 1;
+            break;
+        }
+
+        if (token != FDT_PROP || !depth ||
+            view.structure_size - pos < 8u) {
+            con_str("FDT parse", "unexpected token or truncated property");
+            con_hex("FDT token", token);
+            con_hex("FDT token offset", token_pos);
+            con_hex("FDT depth", depth);
+            return 0;
+        }
+
+        {
+            uint32_t length = be32(view.structure + pos);
+            uint32_t nameoff = be32(view.structure + pos + 4u);
+            const uint8_t *propname;
+            const uint8_t *value;
+            struct fdt_node_state *node = &stack[depth - 1];
+
+            pos += 8u;
+            if (length > view.structure_size - pos ||
+                nameoff >= view.strings_size) {
+                con_str("FDT parse", "property outside block bounds");
+                con_hex("property length", length);
+                con_hex("property name offset", nameoff);
+                con_hex("property offset", token_pos);
+                return 0;
+            }
+
+            propname = view.strings + nameoff;
+            value = view.structure + pos;
+
+            if (bytes_cstr_equal(propname,
+                                 view.strings_size - nameoff,
+                                 "#address-cells")) {
+                if (length != 4u) {
+                    con_str("FDT parse", "bad #address-cells length");
+                    return 0;
+                }
+                node->address_cells = be32(value);
+                /* Zero is valid on non-memory buses in a general FDT.
+                 * parse_reg() rejects zero when a physical range actually
+                 * requires an address cell count.
+                 */
+                if (node->address_cells > 2) {
+                    con_str("FDT parse", "unsupported #address-cells value");
+                    con_hex("#address-cells", node->address_cells);
+                    return 0;
+                }
+            } else if (bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "#size-cells")) {
+                if (length != 4u) {
+                    con_str("FDT parse", "bad #size-cells length");
+                    return 0;
+                }
+                node->size_cells = be32(value);
+                /* #size-cells = <0> is explicitly valid in Device Tree.
+                 * It is only rejected if a RAM/reservation reg tuple uses it.
+                 */
+                if (node->size_cells > 2) {
+                    con_str("FDT parse", "unsupported #size-cells value");
+                    con_hex("#size-cells", node->size_cells);
+                    return 0;
+                }
+            } else if (bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "device_type")) {
+                if (!node->is_root && depth == 2 &&
+                    bytes_value_equal(value, length, "memory"))
+                    node->is_memory = 1;
+            } else if (bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "reg")) {
+                node->reg_data = value;
+                node->reg_length = length;
+                node->has_reg = 1;
+            } else if (node->is_reserved_child &&
+                       bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "size")) {
+                uint64_t requested;
+                if (!read_cells(value, node->parent_size_cells, &requested)) {
+                    con_str("FDT parse", "bad reserved size property");
+                    con_str("FDT node", (const char *)node->name);
+                    return 0;
+                }
+                if (requested)
+                    node->has_dynamic_request = 1;
+            } else if (node->is_reserved_child &&
+                       bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "alloc-ranges")) {
+                if (length)
+                    node->has_dynamic_request = 1;
+            } else if (node->is_reserved_child &&
+                       bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "status")) {
+                if (bytes_value_equal(value, length, "disabled"))
+                    node->disabled = 1;
+            } else if (node->is_reserved_root &&
+                       bytes_cstr_equal(propname,
+                                        view.strings_size - nameoff,
+                                        "ranges")) {
+                if (length != 0) {
+                    node->ranges_nonempty = 1;
+                    node->reg_length = length;
+                }
+            }
+
+            pos = align4_u32(pos + length);
+            if (pos > view.structure_size) {
+                con_str("FDT parse", "property alignment out of bounds");
+                con_hex("property offset", token_pos);
+                return 0;
+            }
+        }
+    }
+
+    if (!saw_end) {
+        con_str("FDT parse", "missing FDT_END token");
+        con_hex("FDT final offset", pos);
+        con_hex("FDT structure size", view.structure_size);
+        con_hex("last token", last_token);
+        return 0;
+    }
+    if (depth != 0) {
+        con_str("FDT parse", "nonzero depth at end");
+        con_hex("FDT depth", depth);
+        return 0;
+    }
+    if (reserved_ranges_unsupported) {
+        con_str("FDT parse", "nonempty reserved-memory ranges unsupported");
+        return 0;
+    }
+    if (layout->memory_count == 0) {
+        con_str("FDT parse", "no /memory reg ranges found");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < layout->memory_count; i++) {
+        uint64_t end;
+        if (layout->memory[i].size == 0 ||
+            layout->memory[i].base + layout->memory[i].size <
+                layout->memory[i].base) {
+            con_str("FDT parse", "invalid RAM range size/overflow");
+            con_hex("RAM base", layout->memory[i].base);
+            con_hex("RAM size", layout->memory[i].size);
+            return 0;
+        }
+        end = layout->memory[i].base + layout->memory[i].size;
+        if (layout->memory[i].base < layout->dram_base)
+            layout->dram_base = layout->memory[i].base;
+        if (end > layout->dram_end)
+            layout->dram_end = end;
+        if (layout->total_ram_size > UINT64_MAX - layout->memory[i].size) {
+            con_str("FDT parse", "total RAM size overflow");
+            return 0;
+        }
+        layout->total_ram_size += layout->memory[i].size;
+    }
+
+    con_str("FDT parse", "memory map parsed successfully");
+    con_hex("RAM region count", layout->memory_count);
+    con_hex("reserved range count", layout->reserved_count);
+    con_hex("unresolved count", layout->unresolved_count);
+    return 1;
+}
+
+void fdt_dump_memory(uintptr_t fdt)
+{
+    fdt_layout_t layout;
+
+    if (!fdt_parse_memory_layout(fdt, &layout)) {
+        con_str("FDT", "runtime memory map parse failed");
+        con_hex("FDT address", fdt);
+        return;
+    }
+
+    con_str("FDT", "runtime memory map");
+    con_hex("RAM regions", layout.memory_count);
+    for (uint32_t i = 0; i < layout.memory_count; i++) {
+        con_hex("RAM B", layout.memory[i].base);
+        con_hex("RAM S", layout.memory[i].size);
+    }
+
+    con_hex("RRegions", layout.reserved_count);
+    for (uint32_t i = 0; i < layout.reserved_count; i++) {
+        con_hex("RBase", layout.reserved[i].base);
+        con_hex("RSize", layout.reserved[i].size);
+    }
+
+    con_hex("Unres", layout.unresolved_count);
+    con_hex("DRAM B", layout.dram_base);
+    con_hex("DRAM S", layout.total_ram_size);
+    con_hex("DRAM E", layout.dram_end);
 }
