@@ -87,59 +87,147 @@ index d89b0f1..d0c710d 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index ccbb188..777aca4 100644
+index 505533a..7f77687 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -463,6 +463,25 @@ LEXT(start_first_cpu)
+@@ -40,7 +40,55 @@
+ #include <arm/pmap.h>
+ #endif /* __ARM_KERNEL_PROTECT__ */
+ 
++#if defined(ANGELICAN)
++
++.macro ANGELICAN_MARK stage
++    /* Calculate framebuffer address: row = 1536 + stage * 8 */
++    MOV64   x0, 0x7ec50000
++    mov     x7, #1536
++    add     x7, x7, #(\stage * 8)
++    mov     x8, #2944
++    madd    x0, x7, x8, x0
++
++    /* Select color by stage */
++    .if \stage == 0
++        mov     w1, #0xffff
++        movk    w1, #0xff00, lsl #16   // Green
++    .elseif \stage == 1
++        mov     w1, #0
++        movk    w1, #0xffff, lsl #16   // Red
++    .elseif \stage == 2
++        mov     w1, #0xffff
++        movk    w1, #0x00ff, lsl #16   // Yellow
++    .elseif \stage == 3
++        mov     w1, #0x00a0
++        movk    w1, #0xff00, lsl #16   // Blue
++    .elseif \stage == 4
++        mov     w1, #0xffff
++        movk    w1, #0xffff, lsl #16   // White
++    .else
++        mov     w1, #0
++        movk    w1, #0xffff, lsl #16   // Red fallback
++    .endif
++
++    mov     x2, #8
++.Langelican_row\@:
++    mov     x3, #720
++    mov     x5, x0
++
++.Langelican_pixel\@:
++    str     w1, [x5], #4
++    subs    x3, x3, #1
++    b.ne    .Langelican_pixel\@
++
++    add     x0, x0, x8
++    subs    x2, x2, #1
++    b.ne    .Langelican_row\@
++
++    dsb     sy
++.endm
+ 
++#endif
+ 
+ .macro MSR_VBAR_EL1_X0
+ #if defined(KERNEL_INTEGRITY_KTRR)
+@@ -460,6 +508,10 @@ LEXT(start_first_cpu)
+ 	msr		OSLAR_EL1, xzr
+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+ 
++#if defined(ANGELICAN)
++	ANGELICAN_MARK 0
++#endif
++
  	mov		x20, x0
  	mov		x21, #0
  
-+#if defined(ANGELICAN)
-+	/* Stage 0: white 64x32 band, no stack or page tables needed. */
-+	MOV64	x0, (0x7ec50000 + 1568 * 2944)
-+	mov		w1, #-1
-+	mov		x2, #32
-+	mov		x4, #4320
-+Langelican_mark_row:
-+	mov		x3, #64
-+	mov		x5, x0
-+Langelican_mark_pixel:
-+	str		w1, [x5], #4
-+	subs	x3, x3, #1
-+	b.ne	Langelican_mark_pixel
-+	add		x0, x0, x4
-+	subs	x2, x2, #1
-+	b.ne	Langelican_mark_row
-+	dsb		sy
-+#endif
-+
- 	// Set low reset vector before attempting any loads
- 	adrp	x0, EXT(LowExceptionVectorBase)@page
- 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -609,6 +628,23 @@ Lkernelcache_base_found:
- 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
- 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+@@ -605,6 +657,28 @@ Lkernelcache_base_found:
+ 	/* create_bootstrap_mapping(vbase, pbase, num_ents, L1 table, freeptr) */
+ 	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
  
 +#if defined(ANGELICAN)
-+	/*
-+	 * Splash framebuffer: one 32MB Normal-NC block in the EXISTING V=P
-+	 * L2 table. Both framebuffer and RAM use L1 index 0; another call to
-+	 * create_bootstrap_mapping would replace the RAM L2 table.
-+	 * ANGELICAN uses 16K pages and all bring-up RAM is below 4GB, so the first
-+	 * V=P L2 page is bootstrap_pagetables + 2*PGBYTES.
-+	 */
-+	MOV64	x10, 0x7ec00000
-+	MOV64	x11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)
-+	orr		x11, x11, x10
-+	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
-+	lsr		x12, x12, #(ARM_TT_L2_SHIFT)
-+	add		x13, x25, #(2 * PGBYTES)
-+	str		x11, [x13, x12, lsl #TTE_SHIFT]
++    MOV64   x10, 0x7e000000
++
++    MOV64   x11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | \
++                  ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | \
++                  ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | \
++                  ARM_TTE_BLOCK_AF | \
++                  ARM_TTE_BLOCK_PNX | \
++                  ARM_TTE_BLOCK_NX)
++
++    orr     x11, x11, x10
++
++    and     x12, x10, #(ARM_TT_L2_INDEX_MASK)
++    lsr     x12, x12, #(ARM_TT_L2_SHIFT)
++
++    add     x13, x25, #(2 * PGBYTES)
++    str     x11, [x13, x12, lsl #TTE_SHIFT]
++
++    dsb     sy
++    isb
 +#endif
 +
+ 	/* Setup the KVA bootstrap mapping */
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+@@ -612,6 +686,9 @@ Lkernelcache_base_found:
  	/* Ensure TTEs are visible */
  	dsb		ish
  
++#if defined(ANGELICAN)
++    ANGELICAN_MARK 1
++#endif
+ 
+ 	b		common_start
+ 
+@@ -658,6 +735,9 @@ common_start:
+ 	mov		x19, lr
+ 	bl		EXT(set_mmu_ttb)
+ 	mov		lr, x19
++#if defined(ANGELICAN)
++    ANGELICAN_MARK 2
++#endif
+ 	add		x0, x25, PGBYTES
+ 	and		x0, x0, #(TTBR_BADDR_MASK)
+ 	MSR_TTBR1_EL1_X0
+@@ -745,6 +825,10 @@ common_start:
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
+ 
++#if defined(ANGELICAN)
++    ANGELICAN_MARK 3
++#endif
++
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
+ 	cmp		x0, x1
+ 	bne		.
+@@ -805,6 +889,9 @@ common_start:
+ 	mov	lr, x21
+ #endif
+ 
++#if defined(ANGELICAN)
++    ANGELICAN_MARK 4
++#endif
+ 	// Return to arm_init()
+ 	ret
+ 
+
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
 index 0000000..8f4c808
