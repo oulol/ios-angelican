@@ -68,10 +68,10 @@ index e26a1d7..a109b60 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..dc2bf48
+index 0000000..b09c636
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,175 @@
 +/*
 + * Redmi Note 10 Pro bootstrap console. No allocation, locks, ADT parsing or
 + * per-CPU state: panic() can reach this before a current thread exists.
@@ -164,6 +164,37 @@ index 0000000..dc2bf48
 +	__asm__ volatile("dsb sy" ::: "memory");
 +}
 +
++void
++angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
++{
++    angelican_early_mark(0, "before arm_init");
++
++    angelican_early_string("X0  = ");
++    angelican_early_hex(x0);
++    angelican_early_putc('\n');
++
++    angelican_early_string("LR  = ");
++    angelican_early_hex(lr);
++    angelican_early_putc('\n');
++
++    angelican_early_string("SP  = ");
++    angelican_early_hex(sp);
++    angelican_early_putc('\n');
++}
++
++static void
++angelican_early_hex(uint64_t value)
++{
++    static const char digits[] = "0123456789ABCDEF";
++
++    angelican_early_string("0x");
++
++    for (int i = 60; i >= 0; i -= 4) {
++        angelican_early_putc(digits[(value >> i) & 0xF]);
++    }
++}
++
++
 +static void
 +angelican_early_string(const char *s)
 +{
@@ -218,33 +249,66 @@ index 0000000..dc2bf48
 +#endif /* ANGELICAN */
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..58e951c
+index 0000000..00e2cdc
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,55 @@
 +/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
 +
 +#include <pexpert/arm64/board_config.h>
++#include <stdint.h>
 +#include <stdarg.h>
 +
 +#if defined(ANGELICAN)
++
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_putc(char c);
 +void angelican_early_clear_screen(void);
++
++void angelican_debug_state(
++    uint64_t x0,
++    uint64_t lr,
++    uint64_t sp
++);
++
 +void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_disable(void);
++
 +#else
++
 +static inline void angelican_early_mark(unsigned int stage, const char *label)
 +{
-+	(void)stage;
-+	(void)label;
++    (void)stage;
++    (void)label;
 +}
++
++static inline void angelican_early_putc(char c)
++{
++    (void)c;
++}
++
++static inline void angelican_early_clear_screen(void) {}
++
++static inline void angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
++{
++    (void)x0;
++    (void)lr;
++    (void)sp;
++}
++
++static inline void angelican_early_panic(const char *fmt, va_list *args)
++{
++    (void)fmt;
++    (void)args;
++}
++
 +static inline void angelican_early_disable(void) {}
-+#endif
 +
 +#endif
++#endif
+\ No newline at end of file
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 index d89b0f1..8879dcc 100644
 --- a/osfmk/arm64/arm_vm_init.c
@@ -267,7 +331,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..1b7dfcb 100644
+index 4592d55..a08d14a 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,7 +40,57 @@
@@ -468,12 +532,27 @@ index 4592d55..1b7dfcb 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +959,10 @@ common_start:
+@@ -811,6 +959,25 @@ common_start:
  	mov	lr, x21
  #endif
  
 +#if defined(ANGELICAN)
 +	ANGELICAN_MARKER x9, 6, x10, x11, x12, w13
++
++    stp     x0, x30, [sp, #-16]!
++
++    // C arguments:
++    // x0 = original boot args
++    // x1 = original LR
++    // x2 = original SP
++    ldr     x0, [sp]
++    ldr     x1, [sp, #8]
++    add     x2, sp, #16
++
++    bl      angelican_debug_state
++
++    // Restore original registers.
++    ldp     x0, x30, [sp], #16
 +#endif
 +
  	// Return to arm_init()
