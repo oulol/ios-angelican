@@ -67,10 +67,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..0837273
+index 0000000..d0840cc
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,140 @@
 +/*
 + * Redmi Note 10 Pro bootstrap console. No allocation, locks, ADT parsing or
 + * per-CPU state: panic() can reach this before a current thread exists.
@@ -86,7 +86,7 @@ index 0000000..0837273
 +#define EARLY_FB ((volatile uint32_t *)(uintptr_t)0x7EC50000)
 +#define EARLY_WIDTH 720u
 +#define EARLY_HEIGHT 1600u
-+#define EARLY_STRIDE 2944u
++#define EARLY_STRIDE (2944u / 4)
 +#define EARLY_SCALE 2u
 +#define EARLY_CELL_W (8u * EARLY_SCALE)
 +#define EARLY_CELL_H (16u * EARLY_SCALE)
@@ -149,6 +149,14 @@ index 0000000..0837273
 +	early_col++;
 +}
 +
++void
++angelican_early_test_pixel(void)
++{
++    /* Center pixel: (360, 800), ARGB8888 red. */
++    EARLY_FB[(EARLY_HEIGHT / 2) * EARLY_STRIDE + (EARLY_WIDTH / 2)] = 0xFFFF0000u;
++    __asm__ volatile("dsb sy" ::: "memory");
++}
++
 +static void
 +angelican_early_string(const char *s)
 +{
@@ -175,6 +183,8 @@ index 0000000..0837273
 +	angelican_early_string(": ");
 +	angelican_early_string(label);
 +	angelican_early_putc('\n');
++
++	angelican_early_test_pixel();
 +}
 +
 +void
