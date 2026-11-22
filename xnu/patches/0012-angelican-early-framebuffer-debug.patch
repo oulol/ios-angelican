@@ -399,7 +399,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..92ebdd2 100644
+index 4592d55..7bb18cb 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,7 +40,60 @@
@@ -441,7 +441,7 @@ index 4592d55..92ebdd2 100644
 +   	    .error "Invalid ANGELICAN_MARKER color"
 +   	.endif
 +
-+	mov	\rows, #(10 + ((6-\color) * 10))
++	mov	\rows, #(10 + ((7-\color) * 10))
 +	mov	\stride, #64
 +
 +.Langelican_fill_row\@:
