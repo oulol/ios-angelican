@@ -68,7 +68,7 @@ index e26a1d7..a109b60 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..167227d
+index 0000000..2451f55
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
 @@ -0,0 +1,267 @@
@@ -281,7 +281,7 @@ index 0000000..167227d
 +
 +	uint32_t color = 0xFF00FF00u | (stage * 28u << 16);
 +
-+	for (unsigned int y = EARLY_HEIGHT - 32; y < EARLY_HEIGHT; y++) {
++	for (unsigned int y = 800; y < 832; y++) {
 +		for (unsigned int x = stage * 64; x < (stage + 1) * 64; x++) {
 +			EARLY_FB[y * EARLY_STRIDE + x] = color;
 +		}
@@ -399,10 +399,10 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..9c18c5d 100644
+index 4592d55..92ebdd2 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -40,7 +40,57 @@
+@@ -40,7 +40,60 @@
  #include <arm/pmap.h>
  #endif /* __ARM_KERNEL_PROTECT__ */
  
@@ -416,27 +416,30 @@ index 4592d55..9c18c5d 100644
 +	.if \color == 0
 +       mov     \tmp, #0xFFFF
 +       movk    \tmp, #0xFFFF, lsl #16    /* White   FF FF FF FF */
-+   .elseif \color == 1
-+       mov     \tmp, #0x0000
-+       movk    \tmp, #0xFFFF, lsl #16    /* Red    FF FF 00 00 */
-+   .elseif \color == 2
-+       mov     \tmp, #0x8000
-+       movk    \tmp, #0xFFFF, lsl #16    /* Orange FF FF 80 00 */
-+   .elseif \color == 3
-+       mov     \tmp, #0xFF00
-+       movk    \tmp, #0xFFFF, lsl #16    /* Yellow FF FF FF 00 */
-+   .elseif \color == 4
-+       mov     \tmp, #0xFF00
-+       movk    \tmp, #0xFF00, lsl #16    /* Green  FF 00 FF 00 */
-+   .elseif \color == 5
-+       mov     \tmp, #0xFFFF
-+       movk    \tmp, #0xFF00, lsl #16    /* Cyan   FF 00 FF FF */
-+   .elseif \color == 6
-+       mov     \tmp, #0x00FF
-+       movk    \tmp, #0xFF00, lsl #16    /* Blue   FF 00 00 FF */
-+   .else
-+       .error "Invalid ANGELICAN_MARKER color"
-+   .endif
++   	.elseif \color == 1
++   	    mov     \tmp, #0x0000
++   	    movk    \tmp, #0xFFFF, lsl #16    /* Red    FF FF 00 00 */
++   	.elseif \color == 2
++   	    mov     \tmp, #0x8000
++   	    movk    \tmp, #0xFFFF, lsl #16    /* Orange FF FF 80 00 */
++   	.elseif \color == 3
++   	    mov     \tmp, #0xFF00
++   	    movk    \tmp, #0xFFFF, lsl #16    /* Yellow FF FF FF 00 */
++   	.elseif \color == 4
++   	    mov     \tmp, #0xFF00
++   	    movk    \tmp, #0xFF00, lsl #16    /* Green  FF 00 FF 00 */
++   	.elseif \color == 5
++   	    mov     \tmp, #0xFFFF
++   	    movk    \tmp, #0xFF00, lsl #16    /* Cyan   FF 00 FF FF */
++   	.elseif \color == 6
++   	    mov     \tmp, #0x00FF
++   	    movk    \tmp, #0xFF00, lsl #16    /* Blue   FF 00 00 FF */
++   	.elseif \color == 7
++   	    mov     \tmp, #0x0080
++   	    movk    \tmp, #0xFF80, lsl #16    /* Purple FF 80 00 80 */
++   	.else
++   	    .error "Invalid ANGELICAN_MARKER color"
++   	.endif
 +
 +	mov	\rows, #(10 + ((6-\color) * 10))
 +	mov	\stride, #64
@@ -460,7 +463,7 @@ index 4592d55..9c18c5d 100644
  
  .macro MSR_VBAR_EL1_X0
  #if defined(KERNEL_INTEGRITY_KTRR)
-@@ -463,6 +513,10 @@ LEXT(start_first_cpu)
+@@ -463,6 +516,10 @@ LEXT(start_first_cpu)
  	mov		x20, x0
  	mov		x21, #0
  
@@ -471,7 +474,7 @@ index 4592d55..9c18c5d 100644
  	// Set low reset vector before attempting any loads
  	adrp	x0, EXT(LowExceptionVectorBase)@page
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -609,6 +663,84 @@ Lkernelcache_base_found:
+@@ -609,6 +666,84 @@ Lkernelcache_base_found:
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
  
@@ -556,7 +559,7 @@ index 4592d55..9c18c5d 100644
  	/* Ensure TTEs are visible */
  	dsb		ish
  
-@@ -633,6 +765,10 @@ Lkernelcache_base_found:
+@@ -633,6 +768,10 @@ Lkernelcache_base_found:
   */
  common_start:
  
@@ -567,7 +570,7 @@ index 4592d55..9c18c5d 100644
  #if HAS_NEX_PG
  	mov x19, lr
  	bl		EXT(set_nex_pg)
-@@ -662,6 +798,10 @@ common_start:
+@@ -662,6 +801,10 @@ common_start:
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
  
@@ -578,7 +581,7 @@ index 4592d55..9c18c5d 100644
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
  	mov		x1, #(MAIR_WRITEBACK << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_WRITEBACK))
-@@ -685,6 +825,10 @@ common_start:
+@@ -685,6 +828,10 @@ common_start:
  	tlbi	vmalle1
  	dsb		ish
  
@@ -589,7 +592,7 @@ index 4592d55..9c18c5d 100644
  
  #if defined(BCM2837)
  	// Setup timer interrupt routing; must be done before MMU is enabled
-@@ -755,6 +899,10 @@ common_start:
+@@ -755,6 +902,10 @@ common_start:
  	bne		.
  #endif /* !VMAPPLE && !ANGELICAN */
  
@@ -600,7 +603,7 @@ index 4592d55..9c18c5d 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +959,25 @@ common_start:
+@@ -811,6 +962,27 @@ common_start:
  	mov	lr, x21
  #endif
  
@@ -618,6 +621,8 @@ index 4592d55..9c18c5d 100644
 +    add     x2, sp, #16
 +
 +    bl      EXT(angelican_debug_state)
++
++	ANGELICAN_MARKER x9, 7, x10, x11, x12, w13
 +
 +    // Restore original registers.
 +    ldp     x0, x30, [sp], #16
