@@ -252,7 +252,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index e5336e5..9d8701c 100644
+index 0517598..5d6bcb8 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,7 +40,60 @@
@@ -360,51 +360,50 @@ index e5336e5..9d8701c 100644
  	/* Setup the KVA bootstrap mapping */
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
-@@ -612,7 +695,9 @@ Lkernelcache_base_found:
- 	/* Ensure TTEs are visible */
- 	dsb		ish
- 
--
-+#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x16, 2, x17, x18, x19, w8
-+#endif
- 	b		common_start
- 
- /*
-@@ -633,6 +718,10 @@ Lkernelcache_base_found:
+@@ -633,6 +716,10 @@ Lkernelcache_base_found:
   */
  common_start:
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 3, x10, x11, x12, w13
++	ANGELICAN_MARKER x9, 2, x10, x11, x12, w13
 +#endif
 +
  #if HAS_NEX_PG
  	mov x19, lr
  	bl		EXT(set_nex_pg)
-@@ -662,6 +751,10 @@ common_start:
+@@ -662,6 +749,10 @@ common_start:
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 4, x10, x11, x12, w13
++	ANGELICAN_MARKER x9, 3, x10, x11, x12, w13
 +#endif
 +
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
  	mov		x1, #(MAIR_WRITEBACK << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_WRITEBACK))
-@@ -685,6 +778,10 @@ common_start:
+@@ -685,6 +776,10 @@ common_start:
  	tlbi	vmalle1
  	dsb		ish
  
 +#if defined(ANGELICAN)
-+	ANGELICAN_MARKER x9, 5, x10, x11, x12, w13
++	ANGELICAN_MARKER x9, 4, x10, x11, x12, w13
 +#endif
 +
  
  #if defined(BCM2837)
  	// Setup timer interrupt routing; must be done before MMU is enabled
-@@ -751,6 +848,10 @@ common_start:
+@@ -740,6 +835,9 @@ common_start:
+ 	PAC_INIT_KEY_STATE tmp=x0, tmp2=x1
+ #endif /* HAS_APPLE_PAC */
+ 
++#if defined(ANGELICAN)
++	ANGELICAN_MARKER x9, 5, x10, x11, x12, w13
++#endif
+ 	// Enable caches, MMU, ROP and JOP
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
+ 	MSR_SCTLR_EL1_X0
+@@ -751,6 +849,10 @@ common_start:
  	bne		.
  #endif /* !VMAPPLE && !ANGELICAN */
  
@@ -415,7 +414,7 @@ index e5336e5..9d8701c 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -807,6 +908,10 @@ common_start:
+@@ -807,6 +909,10 @@ common_start:
  	mov	lr, x21
  #endif
  
