@@ -82,7 +82,7 @@ index 0000000..c93b444
 + * CPU topology: 2 clusters, 4 cores per cluster
 + * Architecture: ARMv8-A
 + * Interrupt controller: GICv3
-+ * Translation granule: 16 KiB
++ * Translation granule: 4 KiB
 + *
 + * This configuration does not enable Apple-specific CPU extensions.
 + */
