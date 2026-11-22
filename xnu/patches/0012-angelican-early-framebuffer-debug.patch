@@ -67,10 +67,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..db05711
+index 0000000..ab2031f
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,223 @@
 +#include <arm64/angelican_early.h>
 +
 +#if defined(ANGELICAN)
@@ -117,6 +117,34 @@ index 0000000..db05711
 +        for (unsigned int x = 0; x < EARLY_WIDTH; x++)
 +            line[x] = EARLY_BLACK;
 +    }
++}
++
++static void
++angelican_early_hex64(uint64_t value)
++{
++    static const char hex[] = "0123456789ABCDEF";
++
++    for (int shift = 60; shift >= 0; shift -= 4)
++        angelican_early_putc(hex[(value >> shift) & 0xF]);
++}
++
++__attribute__((noinline, no_stack_protector))
++void
++angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
++{
++    angelican_early_string("DEBUG STATE\n");
++
++    angelican_early_string("X0:  0x");
++    angelican_early_hex64(x0);
++    angelican_early_putc('\n');
++
++    angelican_early_string("LR:  0x");
++    angelican_early_hex64(lr);
++    angelican_early_putc('\n');
++
++    angelican_early_string("SP:  0x");
++    angelican_early_hex64(sp);
++    angelican_early_putc('\n');
 +}
 +
 +/*
@@ -269,16 +297,17 @@ index 0000000..db05711
 \ No newline at end of file
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..9525ef6
+index 0000000..74cc5d0
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,53 @@
 +
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
 +
 +#include <pexpert/arm64/board_config.h>
 +#include <stdarg.h>
++#include <stdint.h>
 +
 +#if defined(ANGELICAN)
 +
@@ -286,7 +315,7 @@ index 0000000..9525ef6
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_disable(void);
-+
++void angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp);
 +#else
 +
 +static inline void
@@ -312,6 +341,14 @@ index 0000000..9525ef6
 +static inline void
 +angelican_early_disable(void)
 +{
++}
++
++static inline void
++angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
++{
++    (void)x0;
++    (void)lr;
++    (void)sp;
 +}
 +
 +#endif
