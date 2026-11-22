@@ -51,10 +51,17 @@ index 133b07f..c98fc5f 100644
  #error processor not supported
  #endif
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index e5336e5..0517598 100644
+index e5336e5..4592d55 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -745,11 +745,11 @@ common_start:
+@@ -742,14 +742,18 @@ common_start:
+ 
+ 	// Enable caches, MMU, ROP and JOP
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
++#if defined(ANGELICAN)
++    // Cortex-A53 requires SCTLR_EL1[23] = 1 (RES1).
++    orr     x0, x0, #0x800000
++#endif
  	MSR_SCTLR_EL1_X0
  	isb		sy
  
@@ -68,9 +75,26 @@ index e5336e5..0517598 100644
  
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
+@@ -780,11 +784,11 @@ common_start:
+ 	APPLY_TUNABLES x12, x13, x14
+ 
+ 
+-#if HAS_CLUSTER
+-	// Unmask external IRQs if we're restarting from non-retention WFI
+-	mrs		x9, CPU_OVRD
+-	and		x9, x9, #(~(ARM64_REG_CYC_OVRD_irq_mask | ARM64_REG_CYC_OVRD_fiq_mask))
+-	msr		CPU_OVRD, x9
++#if HAS_CLUSTER && !defined(NO_CPU_OVRD)
++    // Unmask external IRQs if we're restarting from non-retention WFI
++    mrs     x9, CPU_OVRD
++    and     x9, x9, #(~(ARM64_REG_CYC_OVRD_irq_mask | ARM64_REG_CYC_OVRD_fiq_mask))
++    msr     CPU_OVRD, x9
+ #endif
+ 
+ 	// If x21 != 0, we're doing a warm reset, so we need to trampoline to the kernel pmap.
 diff --git a/pexpert/pexpert/arm64/ANGELICAN.h b/pexpert/pexpert/arm64/ANGELICAN.h
 new file mode 100644
-index 0000000..c93b444
+index 0000000..2c7aa1b
 --- /dev/null
 +++ b/pexpert/pexpert/arm64/ANGELICAN.h
 @@ -0,0 +1,66 @@
@@ -104,8 +128,8 @@ index 0000000..c93b444
 +#define __ARM_DEBUG__               7
 +#define __ARM_ENABLE_SWAP__         1
 +
-+
-+
++#define HAS_CLUSTER 1
++#define NO_CPU_OVRD 1
 +
 +#define HAS_GIC_V3                  1
 +
