@@ -45,7 +45,7 @@ jobs:
 
       # Use preprocessor mode for stronger correctness when patches
       # introduce new headers or alter include resolution.
-      CCACHE_DIRECT: "false"
+      CCACHE_NODIRECT: "true"
       CCACHE_MAXSIZE: 5G
 
     steps:
