@@ -96,6 +96,7 @@ jobs:
           XCODE_VERSION=$(xcodebuild -version | awk '/^Xcode / {print $2}')
           XCODE_BUILD=$(xcodebuild -version | awk '/^Build version/ {print $3}')
 
+          echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
           echo "xcode_key=${XCODE_VERSION}-${XCODE_BUILD}" >> "$GITHUB_OUTPUT"
 
       # Cache intermediate build products, NOT XNU source.
