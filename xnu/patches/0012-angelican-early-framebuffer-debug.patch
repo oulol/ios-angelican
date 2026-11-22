@@ -67,10 +67,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..30ba9e0
+index 0000000..488bc8c
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,105 @@
 +
 +#include <arm64/angelican_early.h>
 +
@@ -86,6 +86,7 @@ index 0000000..30ba9e0
 +
 +#define EARLY_BLACK   0xFF000000u
 +#define EARLY_WHITE   0xFFFFFFFFu
++#define EARLY_RED     0xFFFF0000u
 +
 +static volatile unsigned int early_disabled;
 +
@@ -142,12 +143,7 @@ index 0000000..30ba9e0
 +{
 +    (void)label;
 +
-+    if (stage > 8)
-+        return;
-+
-+    uint32_t color = 0xFF00FF00u | (stage * 28u << 16);
-+
-+    angelican_early_fill(color);
++    angelican_early_fill(EARLY_RED);
 +}
 +
 +/*
@@ -229,7 +225,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..75eb91e 100644
+index 4592d55..3f41bfb 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,15 +40,70 @@
@@ -453,7 +449,7 @@ index 4592d55..75eb91e 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,8 +964,34 @@ common_start:
+@@ -811,6 +964,32 @@ common_start:
  	mov	lr, x21
  #endif
  
@@ -484,11 +480,8 @@ index 4592d55..75eb91e 100644
 +#endif
 +
  	// Return to arm_init()
--	ret
-+	b EXT(arm_init)
+ 	ret
  
- Ltrampoline:
- 	// Load VA of the trampoline
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 index c40d57b..5d0e3b0 100644
 --- a/osfmk/conf/files.arm64
