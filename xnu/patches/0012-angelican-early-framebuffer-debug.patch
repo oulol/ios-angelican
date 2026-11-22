@@ -68,154 +68,227 @@ index e26a1d7..a109b60 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..b09c636
+index 0000000..167227d
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,267 @@
++
 +/*
-+ * Redmi Note 10 Pro bootstrap console. No allocation, locks, ADT parsing or
-+ * per-CPU state: panic() can reach this before a current thread exists.
-+ * start.s maps the splash framebuffer VA=PA as Normal Non-Cacheable memory.
-+ * Stop using that mapping before arm_vm_init tears down bootstrap TTBR0.
++ * Redmi 9C NFC (ANGELICAN) bootstrap framebuffer console.
++ *
++ * No allocation, locks, ADT parsing or per-CPU state.
++ * The framebuffer is identity-mapped by start.s as Normal Non-Cacheable.
++ * Stop using it before arm_vm_init replaces bootstrap TTBR0.
 + */
++
 +#include <arm64/angelican_early.h>
 +
 +#if defined(ANGELICAN)
++
 +#include <stdint.h>
++#include <stdarg.h>
 +#include <kern/misc_protos.h>
 +
 +#define EARLY_FB ((volatile uint32_t *)(uintptr_t)0x7EC50000)
-+#define EARLY_WIDTH 720u
-+#define EARLY_HEIGHT 1600u
-+#define EARLY_STRIDE (2944u / 4)
-+#define EARLY_SCALE 2u
-+#define EARLY_CELL_W (8u * EARLY_SCALE)
-+#define EARLY_CELL_H (16u * EARLY_SCALE)
-+#define EARLY_ROWS ((EARLY_HEIGHT - 32u) / EARLY_CELL_H)
-+#define EARLY_COLS (EARLY_WIDTH / EARLY_CELL_W)
++
++#define EARLY_WIDTH       720u
++#define EARLY_HEIGHT      1600u
++#define EARLY_STRIDE      (2944u / sizeof(uint32_t)) /* 736 pixels */
++
++#define EARLY_SCALE       2u
++#define EARLY_CELL_W      (8u * EARLY_SCALE)
++#define EARLY_CELL_H      (16u * EARLY_SCALE)
++
++#define EARLY_ROWS        ((EARLY_HEIGHT - 32u) / EARLY_CELL_H)
++#define EARLY_COLS        (EARLY_WIDTH / EARLY_CELL_W)
++
++#define EARLY_BLACK       0xFF000000u
++#define EARLY_WHITE       0xFFFFFFFFu
++#define EARLY_RED         0xFFFF0000u
 +
 +extern unsigned char iso_font[256 * 16];
 +
-+/* Initialized data must remain writable until disable, including panics. */
-+static unsigned int early_row, early_col;
-+static unsigned int early_started, early_disabled, early_panicking;
++/* Keep this state writable until angelican_early_disable(). */
++static unsigned int early_row;
++static unsigned int early_col;
++static unsigned int early_started;
++static unsigned int early_disabled;
++static unsigned int early_panicking;
 +
++/* Forward declarations. */
++static void angelican_early_string(const char *s);
++static void angelican_early_hex(uint64_t value);
++static void angelican_early_clear_row(void);
++
++
++/* Clear the current text row. */
 +static void
 +angelican_early_clear_row(void)
 +{
 +	for (unsigned int y = 0; y < EARLY_CELL_H; y++) {
-+		volatile uint32_t *line = EARLY_FB + (early_row * EARLY_CELL_H + y) * EARLY_STRIDE;
++		volatile uint32_t *line =
++		    EARLY_FB + (early_row * EARLY_CELL_H + y) * EARLY_STRIDE;
++
 +		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
-+			line[x] = 0xff000000u;
++			line[x] = EARLY_BLACK;
 +		}
 +	}
 +}
 +
++
++/* Clear the entire visible framebuffer and reset the text cursor. */
++void
++angelican_early_clear_screen(void)
++{
++	if (early_disabled) {
++		return;
++	}
++
++	for (unsigned int y = 0; y < EARLY_HEIGHT; y++) {
++		volatile uint32_t *line = EARLY_FB + y * EARLY_STRIDE;
++
++		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
++			line[x] = EARLY_BLACK;
++		}
++	}
++
++	early_row = 0;
++	early_col = 0;
++	early_started = 1;
++
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++
++/* Draw one character. */
 +void
 +angelican_early_putc(char c)
 +{
 +	if (early_disabled) {
 +		return;
 +	}
++
 +	if (!early_started) {
 +		early_started = 1;
 +		angelican_early_clear_row();
 +	}
++
 +	if (c == '\r') {
 +		early_col = 0;
 +		return;
 +	}
++
 +	if (c == '\n' || early_col == EARLY_COLS) {
 +		early_col = 0;
 +		early_row = (early_row + 1) % EARLY_ROWS;
++
 +		angelican_early_clear_row();
++
 +		if (c == '\n') {
 +			return;
 +		}
 +	}
-+	const unsigned char *glyph = iso_font + (unsigned char)c * 16;
++
++	const unsigned char *glyph =
++	    iso_font + (unsigned char)c * 16;
++
 +	for (unsigned int gy = 0; gy < 16; gy++) {
 +		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
-+			volatile uint32_t *line = EARLY_FB +
-+			    (early_row * EARLY_CELL_H + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
-+			    early_col * EARLY_CELL_W;
++			volatile uint32_t *line =
++			    EARLY_FB
++			    + (early_row * EARLY_CELL_H
++			       + gy * EARLY_SCALE + sy) * EARLY_STRIDE
++			    + early_col * EARLY_CELL_W;
++
 +			for (unsigned int gx = 0; gx < 8; gx++) {
-+				uint32_t pixel = (glyph[gy] & (1u << gx)) ? 0xffffffffu : 0xff000000u;
++				/* iso_font uses MSB-first bit order. */
++				uint32_t pixel =
++				    (glyph[gy] & (0x80u >> gx))
++				    ? EARLY_WHITE : EARLY_BLACK;
++
 +				for (unsigned int sx = 0; sx < EARLY_SCALE; sx++) {
 +					line[gx * EARLY_SCALE + sx] = pixel;
 +				}
 +			}
 +		}
 +	}
++
 +	early_col++;
 +}
 +
-+void
-+angelican_early_clear_screen(void)
-+{
-+	for (unsigned int y = 0; y < EARLY_HEIGHT; y++) {
-+		volatile uint32_t *line = EARLY_FB + y * EARLY_STRIDE;
 +
-+		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
-+			line[x] = 0xFF000000u; /* ARGB: opaque black */
-+		}
-+	}
-+
-+	__asm__ volatile("dsb sy" ::: "memory");
-+}
-+
-+void
-+angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
-+{
-+    angelican_early_mark(0, "before arm_init");
-+
-+    angelican_early_string("X0  = ");
-+    angelican_early_hex(x0);
-+    angelican_early_putc('\n');
-+
-+    angelican_early_string("LR  = ");
-+    angelican_early_hex(lr);
-+    angelican_early_putc('\n');
-+
-+    angelican_early_string("SP  = ");
-+    angelican_early_hex(sp);
-+    angelican_early_putc('\n');
-+}
-+
-+static void
-+angelican_early_hex(uint64_t value)
-+{
-+    static const char digits[] = "0123456789ABCDEF";
-+
-+    angelican_early_string("0x");
-+
-+    for (int i = 60; i >= 0; i -= 4) {
-+        angelican_early_putc(digits[(value >> i) & 0xF]);
-+    }
-+}
-+
-+
++/* Print a null-terminated string. */
 +static void
 +angelican_early_string(const char *s)
 +{
++	if (s == NULL) {
++		return;
++	}
++
 +	while (*s) {
 +		angelican_early_putc(*s++);
 +	}
 +}
 +
++
++/* Print a 64-bit hexadecimal value. */
++static void
++angelican_early_hex(uint64_t value)
++{
++	static const char digits[] = "0123456789ABCDEF";
++
++	angelican_early_string("0x");
++
++	for (int i = 60; i >= 0; i -= 4) {
++		angelican_early_putc(digits[(value >> i) & 0xF]);
++	}
++}
++
++
++/* Print register state for early boot debugging. */
++void
++angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
++{
++	if (early_disabled) {
++		return;
++	}
++
++	angelican_early_mark(0, "before arm_init");
++
++	angelican_early_string("X0  = ");
++	angelican_early_hex(x0);
++	angelican_early_putc('\n');
++
++	angelican_early_string("LR  = ");
++	angelican_early_hex(lr);
++	angelican_early_putc('\n');
++
++	angelican_early_string("SP  = ");
++	angelican_early_hex(sp);
++	angelican_early_putc('\n');
++
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++
++/* Draw a stage marker and print its label. */
 +void
 +angelican_early_mark(unsigned int stage, const char *label)
 +{
 +	if (early_disabled || stage > 8) {
 +		return;
 +	}
-+	uint32_t color = 0xff00ff00u | (stage * 28u << 16);
++
++	uint32_t color = 0xFF00FF00u | (stage * 28u << 16);
++
 +	for (unsigned int y = EARLY_HEIGHT - 32; y < EARLY_HEIGHT; y++) {
 +		for (unsigned int x = stage * 64; x < (stage + 1) * 64; x++) {
 +			EARLY_FB[y * EARLY_STRIDE + x] = color;
 +		}
 +	}
++
 +	__asm__ volatile("dsb sy" ::: "memory");
++
 +	angelican_early_string("EARLY ");
 +	angelican_early_putc((char)('0' + stage));
 +	angelican_early_string(": ");
@@ -223,37 +296,56 @@ index 0000000..b09c636
 +	angelican_early_putc('\n');
 +}
 +
++
++/* Print an early panic message. */
 +void
 +angelican_early_panic(const char *fmt, va_list *args)
 +{
-+	if (early_disabled || early_panicking) {
++	if (early_disabled || early_panicking || args == NULL) {
 +		return;
 +	}
++
 +	early_panicking = 1;
++
 +	angelican_early_string("\nEARLY PANIC: ");
++
 +	va_list copy;
 +	va_copy(copy, *args);
 +	_doprnt(fmt, &copy, angelican_early_putc, 16);
 +	va_end(copy);
++
 +	angelican_early_putc('\n');
++
 +	__asm__ volatile("dsb sy" ::: "memory");
 +}
 +
++
++/*
++ * Stop using the early framebuffer before bootstrap TTBR0 is replaced.
++ * Draw the final marker while the mapping is still valid.
++ */
 +void
 +angelican_early_disable(void)
 +{
++	if (early_disabled) {
++		return;
++	}
++
 +	angelican_early_mark(8, "leaving bootstrap TTBR0");
-+	early_disabled = 1;
++
 +	__asm__ volatile("dsb sy" ::: "memory");
++
++	early_disabled = 1;
 +}
++
 +#endif /* ANGELICAN */
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..00e2cdc
+index 0000000..0c54127
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,55 @@
-+/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
+@@ -0,0 +1,32 @@
++
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
 +
@@ -266,49 +358,25 @@ index 0000000..00e2cdc
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_putc(char c);
 +void angelican_early_clear_screen(void);
-+
-+void angelican_debug_state(
-+    uint64_t x0,
-+    uint64_t lr,
-+    uint64_t sp
-+);
-+
 +void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_disable(void);
 +
++void angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp);
++
 +#else
 +
-+static inline void angelican_early_mark(unsigned int stage, const char *label)
++static inline void
++angelican_early_mark(unsigned int stage, const char *label)
 +{
-+    (void)stage;
-+    (void)label;
-+}
-+
-+static inline void angelican_early_putc(char c)
-+{
-+    (void)c;
-+}
-+
-+static inline void angelican_early_clear_screen(void) {}
-+
-+static inline void angelican_debug_state(uint64_t x0, uint64_t lr, uint64_t sp)
-+{
-+    (void)x0;
-+    (void)lr;
-+    (void)sp;
-+}
-+
-+static inline void angelican_early_panic(const char *fmt, va_list *args)
-+{
-+    (void)fmt;
-+    (void)args;
++	(void)stage;
++	(void)label;
 +}
 +
 +static inline void angelican_early_disable(void) {}
 +
 +#endif
-+#endif
-\ No newline at end of file
++
++#endif /* _ARM64_ANGELICAN_EARLY_H_ */
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 index d89b0f1..8879dcc 100644
 --- a/osfmk/arm64/arm_vm_init.c
