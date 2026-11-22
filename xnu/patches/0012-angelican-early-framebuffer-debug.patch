@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-index e26a1d7..a109b60 100644
+index e26a1d7..173d438 100644
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
 @@ -56,6 +56,7 @@
@@ -10,17 +10,16 @@ index e26a1d7..a109b60 100644
  #include <arm/pmap.h>
  #include <arm/caches_internal.h>
  #include <arm/cpu_internal.h>
-@@ -346,6 +347,9 @@ arm_init(
+@@ -346,6 +347,8 @@ arm_init(
  	DTEntry chosen = NULL;
  	unsigned int dt_entry_size = 0;
  
-+	angelican_early_clear_screen();
 +	angelican_early_mark(1, "arm_init entered (MMU on)");
 +
  	arm_setup_pre_sign();
  
  	arm_slide_rebase_and_sign_image();
-@@ -362,6 +366,7 @@ arm_init(
+@@ -362,6 +365,7 @@ arm_init(
  #endif /* defined(HAS_APPLE_PAC) */
  
  	PE_init_platform(FALSE, args); /* Get platform expert set up */
@@ -28,7 +27,7 @@ index e26a1d7..a109b60 100644
  
  #if __arm64__
  	configure_timer_apple_regs();
-@@ -423,6 +428,7 @@ arm_init(
+@@ -423,6 +427,7 @@ arm_init(
  #endif
  
  	ml_parse_cpu_topology();
@@ -36,7 +35,7 @@ index e26a1d7..a109b60 100644
  
  
  	master_cpu = ml_get_boot_cpu_number();
-@@ -453,11 +459,13 @@ arm_init(
+@@ -453,11 +458,13 @@ arm_init(
  	 */
  	thread->machine.preemption_count = 0;
  	cpu_bootstrap();
@@ -50,7 +49,7 @@ index e26a1d7..a109b60 100644
  
  	/*
  	 * Initialize the timer callout world
-@@ -466,6 +474,7 @@ arm_init(
+@@ -466,6 +473,7 @@ arm_init(
  
  	cpu_init();
  
@@ -58,7 +57,7 @@ index e26a1d7..a109b60 100644
  	processor_bootstrap();
  
  	if (PE_parse_boot_argn("maxmem", &maxmem, sizeof(maxmem))) {
-@@ -513,6 +522,7 @@ arm_init(
+@@ -513,6 +521,7 @@ arm_init(
  	__builtin_arm_wsr("pan", 1);
  #endif  /* __ARM_PAN_AVAILABLE__ */
  
