@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-index e26a1d7..173d438 100644
+index e26a1d7..a109b60 100644
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
 @@ -56,6 +56,7 @@
@@ -10,16 +10,17 @@ index e26a1d7..173d438 100644
  #include <arm/pmap.h>
  #include <arm/caches_internal.h>
  #include <arm/cpu_internal.h>
-@@ -346,6 +347,8 @@ arm_init(
+@@ -346,6 +347,9 @@ arm_init(
  	DTEntry chosen = NULL;
  	unsigned int dt_entry_size = 0;
  
++	angelican_early_clear_screen();
 +	angelican_early_mark(1, "arm_init entered (MMU on)");
 +
  	arm_setup_pre_sign();
  
  	arm_slide_rebase_and_sign_image();
-@@ -362,6 +365,7 @@ arm_init(
+@@ -362,6 +366,7 @@ arm_init(
  #endif /* defined(HAS_APPLE_PAC) */
  
  	PE_init_platform(FALSE, args); /* Get platform expert set up */
@@ -27,7 +28,7 @@ index e26a1d7..173d438 100644
  
  #if __arm64__
  	configure_timer_apple_regs();
-@@ -423,6 +427,7 @@ arm_init(
+@@ -423,6 +428,7 @@ arm_init(
  #endif
  
  	ml_parse_cpu_topology();
@@ -35,7 +36,7 @@ index e26a1d7..173d438 100644
  
  
  	master_cpu = ml_get_boot_cpu_number();
-@@ -453,11 +458,13 @@ arm_init(
+@@ -453,11 +459,13 @@ arm_init(
  	 */
  	thread->machine.preemption_count = 0;
  	cpu_bootstrap();
@@ -49,7 +50,7 @@ index e26a1d7..173d438 100644
  
  	/*
  	 * Initialize the timer callout world
-@@ -466,6 +473,7 @@ arm_init(
+@@ -466,6 +474,7 @@ arm_init(
  
  	cpu_init();
  
@@ -57,7 +58,7 @@ index e26a1d7..173d438 100644
  	processor_bootstrap();
  
  	if (PE_parse_boot_argn("maxmem", &maxmem, sizeof(maxmem))) {
-@@ -513,6 +521,7 @@ arm_init(
+@@ -513,6 +522,7 @@ arm_init(
  	__builtin_arm_wsr("pan", 1);
  #endif  /* __ARM_PAN_AVAILABLE__ */
  
@@ -67,10 +68,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..d0840cc
+index 0000000..dc2bf48
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,144 @@
 +/*
 + * Redmi Note 10 Pro bootstrap console. No allocation, locks, ADT parsing or
 + * per-CPU state: panic() can reach this before a current thread exists.
@@ -150,11 +151,17 @@ index 0000000..d0840cc
 +}
 +
 +void
-+angelican_early_test_pixel(void)
++angelican_early_clear_screen(void)
 +{
-+    /* Center pixel: (360, 800), ARGB8888 red. */
-+    EARLY_FB[(EARLY_HEIGHT / 2) * EARLY_STRIDE + (EARLY_WIDTH / 2)] = 0xFFFF0000u;
-+    __asm__ volatile("dsb sy" ::: "memory");
++	for (unsigned int y = 0; y < EARLY_HEIGHT; y++) {
++		volatile uint32_t *line = EARLY_FB + y * EARLY_STRIDE;
++
++		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
++			line[x] = 0xFF000000u; /* ARGB: opaque black */
++		}
++	}
++
++	__asm__ volatile("dsb sy" ::: "memory");
 +}
 +
 +static void
@@ -183,8 +190,6 @@ index 0000000..d0840cc
 +	angelican_early_string(": ");
 +	angelican_early_string(label);
 +	angelican_early_putc('\n');
-+
-+	angelican_early_test_pixel();
 +}
 +
 +void
@@ -213,10 +218,10 @@ index 0000000..d0840cc
 +#endif /* ANGELICAN */
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..328bc14
+index 0000000..58e951c
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,23 @@
 +/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
@@ -227,6 +232,7 @@ index 0000000..328bc14
 +#if defined(ANGELICAN)
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_putc(char c);
++void angelican_early_clear_screen(void);
 +void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_disable(void);
 +#else
