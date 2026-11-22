@@ -41,7 +41,6 @@ jobs:
     env:
       # XNU 8796 has built-in CCACHE support.
       CCACHE: ccache
-      CCACHE_DIR: ${{ runner.temp }}/ccache
       CCACHE_COMPILERCHECK: content
 
       # Use preprocessor mode for stronger correctness when patches
