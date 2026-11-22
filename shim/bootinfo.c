@@ -85,10 +85,10 @@ void bootinfo_dump(uintptr_t dtb)
     con_skip();
     con_str("DTB", "Runtime device tree");
 
-    con_hex("DTB address", dtb);
+    con_hex("DTB addr", dtb);
 
     if (!fdt_validate(dtb, &total_size)) {
-        con_str("DTB ERROR", "Invalid FDT header or bounds");
+        con_str("DTB err", "Invalid FDT header or bounds");
         return;
     }
 

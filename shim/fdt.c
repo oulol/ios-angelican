@@ -259,17 +259,17 @@ int fdt_validate(uintptr_t fdt, uint32_t *total_size)
     struct fdt_view view;
 
     if (!open_fdt(fdt, &view)) {
-        con_str("FDT validate", "header/block bounds failed");
+        con_str("FDT chk", "header/block bounds failed");
         return 0;
     }
     if (!validate_reserve_map(&view)) {
-        con_str("FDT validate", "reservation map is malformed");
-        con_hex("FDT reserve offset", view.reserve_offset);
-        con_hex("FDT structure offset", view.structure_offset);
+        con_str("FDT chk", "reservation map is malformed");
+        con_hex("RES off", view.reserve_offset);
+        con_hex("STR off", view.structure_offset);
         return 0;
     }
     if (!validate_structure(&view)) {
-        con_str("FDT validate", "structure tokens are malformed");
+        con_str("FDT chk", "structure tokens are malformed");
         return 0;
     }
 
@@ -518,7 +518,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
 
             if (depth >= FDT_MAX_DEPTH) {
                 con_str("FDT parse", "node depth limit exceeded");
-                con_hex("FDT token offset", token_pos);
+                con_hex("TOK off", token_pos);
                 return 0;
             }
 
@@ -526,7 +526,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
                 pos++;
             if (pos >= view.structure_size) {
                 con_str("FDT parse", "unterminated node name");
-                con_hex("FDT token offset", token_pos);
+                con_hex("TOK off", token_pos);
                 return 0;
             }
 
@@ -555,7 +555,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             pos = align4_u32(pos + 1u);
             if (pos > view.structure_size) {
                 con_str("FDT parse", "node-name alignment out of bounds");
-                con_hex("FDT token offset", token_pos);
+                con_hex("TOK off", token_pos);
                 return 0;
             }
             depth++;
@@ -567,7 +567,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
 
             if (!depth) {
                 con_str("FDT parse", "END_NODE at depth zero");
-                con_hex("FDT token offset", token_pos);
+                con_hex("TOK off", token_pos);
                 return 0;
             }
             node = &stack[depth - 1];
@@ -575,7 +575,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             if (node->is_memory && !node->disabled) {
                 if (!node->has_reg) {
                     con_str("FDT parse", "memory node has no reg");
-                    con_str("FDT node", (const char *)node->name);
+                    con_str("Node", (const char *)node->name);
                     return 0;
                 }
                 if (!parse_reg(node->reg_data, node->reg_length,
@@ -585,10 +585,10 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
                                &layout->memory_count,
                                FDT_MAX_MEMORY_RANGES)) {
                     con_str("FDT parse", "invalid memory reg property");
-                    con_str("FDT node", (const char *)node->name);
-                    con_hex("reg length", node->reg_length);
-                    con_hex("address cells", node->parent_address_cells);
-                    con_hex("size cells", node->parent_size_cells);
+                    con_str("Node", (const char *)node->name);
+                    con_hex("REG len", node->reg_length);
+                    con_hex("ADDR cel", node->parent_address_cells);
+                    con_hex("SIZE cel", node->parent_size_cells);
                     return 0;
                 }
             }
@@ -596,7 +596,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             if (node->is_reserved_root && node->ranges_nonempty) {
                 reserved_ranges_unsupported = 1;
                 con_str("FDT parse", "reserved-memory ranges is nonempty");
-                con_hex("ranges length", node->reg_length);
+                con_hex("RNG len", node->reg_length);
             }
 
             if (node->is_reserved_child && !node->disabled) {
@@ -608,10 +608,10 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
                                    &layout->reserved_count,
                                    FDT_MAX_RESERVED)) {
                         con_str("FDT parse", "invalid reserved-memory reg");
-                        con_str("FDT node", (const char *)node->name);
-                        con_hex("reg length", node->reg_length);
-                        con_hex("address cells", node->parent_address_cells);
-                        con_hex("size cells", node->parent_size_cells);
+                        con_str("Node", (const char *)node->name);
+                        con_hex("REG len", node->reg_length);
+                        con_hex("ADDR cel", node->parent_address_cells);
+                        con_hex("SIZE cel", node->parent_size_cells);
                         return 0;
                     }
                 } else if (node->has_dynamic_request) {
@@ -631,8 +631,8 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
         if (token == FDT_END) {
             if (depth != 0) {
                 con_str("FDT parse", "END token with unclosed nodes");
-                con_hex("FDT depth", depth);
-                con_hex("FDT token offset", token_pos);
+                con_hex("Depth", depth);
+                con_hex("TOK off", token_pos);
                 return 0;
             }
             saw_end = 1;
@@ -643,8 +643,8 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             view.structure_size - pos < 8u) {
             con_str("FDT parse", "unexpected token or truncated property");
             con_hex("FDT token", token);
-            con_hex("FDT token offset", token_pos);
-            con_hex("FDT depth", depth);
+            con_hex("TOK off", token_pos);
+            con_hex("Depth", depth);
             return 0;
         }
 
@@ -659,9 +659,9 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             if (length > view.structure_size - pos ||
                 nameoff >= view.strings_size) {
                 con_str("FDT parse", "property outside block bounds");
-                con_hex("property length", length);
-                con_hex("property name offset", nameoff);
-                con_hex("property offset", token_pos);
+                con_hex("PROP len", length);
+                con_hex("NAME off", nameoff);
+                con_hex("PROP off", token_pos);
                 return 0;
             }
 
@@ -720,7 +720,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
                 uint64_t requested;
                 if (!read_cells(value, node->parent_size_cells, &requested)) {
                     con_str("FDT parse", "bad reserved size property");
-                    con_str("FDT node", (const char *)node->name);
+                    con_str("Node", (const char *)node->name);
                     return 0;
                 }
                 if (requested)
@@ -750,7 +750,7 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
             pos = align4_u32(pos + length);
             if (pos > view.structure_size) {
                 con_str("FDT parse", "property alignment out of bounds");
-                con_hex("property offset", token_pos);
+                con_hex("PROP off", token_pos);
                 return 0;
             }
         }
@@ -758,14 +758,14 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
 
     if (!saw_end) {
         con_str("FDT parse", "missing FDT_END token");
-        con_hex("FDT final offset", pos);
-        con_hex("FDT structure size", view.structure_size);
-        con_hex("last token", last_token);
+        con_hex("FDT end", pos);
+        con_hex("STR size", view.structure_size);
+        con_hex("TOK last", last_token);
         return 0;
     }
     if (depth != 0) {
         con_str("FDT parse", "nonzero depth at end");
-        con_hex("FDT depth", depth);
+        con_hex("Depth", depth);
         return 0;
     }
     if (reserved_ranges_unsupported) {
@@ -800,9 +800,9 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
     }
 
     con_str("FDT parse", "memory map parsed successfully");
-    con_hex("RAM region count", layout->memory_count);
-    con_hex("reserved range count", layout->reserved_count);
-    con_hex("unresolved count", layout->unresolved_count);
+    con_hex("REG cnt", layout->memory_count);
+    con_hex("RES cnt", layout->reserved_count);
+    con_hex("UNRES", layout->unresolved_count);
     return 1;
 }
 
@@ -812,25 +812,25 @@ void fdt_dump_memory(uintptr_t fdt)
 
     if (!fdt_parse_memory_layout(fdt, &layout)) {
         con_str("FDT", "runtime memory map parse failed");
-        con_hex("FDT address", fdt);
+        con_hex("FDT addr", fdt);
         return;
     }
 
     con_str("FDT", "runtime memory map");
-    con_hex("RAM regions", layout.memory_count);
+    con_hex("RAM cnt", layout.memory_count);
     for (uint32_t i = 0; i < layout.memory_count; i++) {
         con_hex("RAM B", layout.memory[i].base);
         con_hex("RAM S", layout.memory[i].size);
     }
 
-    con_hex("RRegions", layout.reserved_count);
+    con_hex("RES cnt", layout.reserved_count);
     for (uint32_t i = 0; i < layout.reserved_count; i++) {
-        con_hex("RBase", layout.reserved[i].base);
-        con_hex("RSize", layout.reserved[i].size);
+        con_hex("RES base", layout.reserved[i].base);
+        con_hex("RES size", layout.reserved[i].size);
     }
 
     con_hex("Unres", layout.unresolved_count);
-    con_hex("DRAM B", layout.dram_base);
-    con_hex("DRAM S", layout.total_ram_size);
-    con_hex("DRAM E", layout.dram_end);
+    con_hex("DRAM bse", layout.dram_base);
+    con_hex("DRAM sze", layout.total_ram_size);
+    con_hex("DRAM end", layout.dram_end);
 }

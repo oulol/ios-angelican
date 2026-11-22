@@ -556,7 +556,7 @@ static void angelican_check_smpen(void)
 }
 
 /*
- * Public entry point. Call from EL1 with the runtime FDT address.
+ * Public entry point. Call from EL1 with the runtime FDT addr.
  */
 __attribute__((noreturn))
 void loader_xnu_boot(uintptr_t dtb)
@@ -598,7 +598,7 @@ void loader_xnu_boot(uintptr_t dtb)
 
     if (layout.unresolved_count) {
         con_str("FDT", "Linux dynamic reservation requests present");
-        con_hex("Dynamic request count", layout.unresolved_count);
+        con_hex("Dyn req", layout.unresolved_count);
     }
 
     if (!range_inside((uint64_t)dtb, layout.total_size,
@@ -627,10 +627,10 @@ void loader_xnu_boot(uintptr_t dtb)
         xnu_error("Too many runtime reservations", layout.reserved_count);
 
     con_str("FDT", "Runtime memory map");
-    con_hex("DRAM b", layout.dram_base);
-    con_hex("DRAM s", layout.total_ram_size);
-    con_hex("DRAM e", layout.dram_end);
-    con_hex("ResRanges", layout.reserved_count);
+    con_hex("DRAM bse", layout.dram_base);
+    con_hex("DRAM sze", layout.total_ram_size);
+    con_hex("DRAM end", layout.dram_end);
+    con_hex("RES cnt", layout.reserved_count);
     con_hex("IRD strt", initrd_start);
     con_hex("IRD end", initrd_end);
 
@@ -691,8 +691,8 @@ void loader_xnu_boot(uintptr_t dtb)
 
 
     if (!find_kernel_memory_window(&layout, &managed_base, &managed_size)) {
-        con_hex("Largest free base", managed_base);
-        con_hex("Largest free size", managed_size);
+        con_hex("FREE bse", managed_base);
+        con_hex("FREE sze", managed_size);
         //xnu_error("No RAM window > 1 GiB", managed_size);
     }
 
