@@ -535,6 +535,26 @@ static int validate_payload_segments(const struct payload *p,
     return segment_contains_entry(p);
 }
 
+static inline uint64_t read_cpuectlr_el1(void)
+{
+    uint64_t value;
+
+    __asm__ volatile(
+        "mrs %0, S3_1_C15_C2_1"
+        : "=r"(value)
+    );
+
+    return value;
+}
+
+static void angelican_check_smpen(void)
+{
+    uint64_t value = read_cpuectlr_el1();
+
+    con_hex("CPUECTLR", value);
+    con_hex("SMPEN", (value >> 6) & 1);
+}
+
 /*
  * Public entry point. Call from EL1 with the runtime FDT address.
  */
@@ -833,6 +853,7 @@ void loader_xnu_boot(uintptr_t dtb)
 
     con_hex("CurrentEL", current_el);
     con_hex("SCTLR_EL1", sctlr);
+    angelican_check_smpen();
     con_hex("Entry PA", entry_pa);
     con_hex("boot_args PA", boot_args_pa);
     con_hex("Entry offset", p->entry_va - p->virt_base);
