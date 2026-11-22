@@ -229,7 +229,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..452a8cd 100644
+index 4592d55..58411a3 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,15 +40,70 @@
@@ -453,29 +453,30 @@ index 4592d55..452a8cd 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +964,27 @@ common_start:
+@@ -811,6 +964,28 @@ common_start:
  	mov	lr, x21
  #endif
  
 +#if defined(ANGELICAN)
 +	ANGELICAN_MARKER x9, 6, x10, x11, x12, w13
 +
-+    stp     x0, x30, [sp, #-16]!
++    mov     x22, x0          // original boot args
++	ANGELICAN_MARKER x9, 0, x10, x11, x12, w13
++    mov     x23, x30         // original LR
++	ANGELICAN_MARKER x9, 1, x10, x11, x12, w13
++    mov     x24, sp          // original SP
++	ANGELICAN_MARKER x9, 2, x10, x11, x12, w13
 +
-+    // C arguments:
-+    // x0 = original boot args
-+    // x1 = original LR
-+    // x2 = original SP
-+    ldr     x0, [sp]
-+    ldr     x1, [sp, #8]
-+    add     x2, sp, #16
++    // C arguments.
++    mov     x0, x22
++    mov     x1, x23
++    mov     x2, x24
++
++	ANGELICAN_MARKER x9, 3, x10, x11, x12, w13
 +
 +    bl      EXT(angelican_debug_state)
 +
 +	ANGELICAN_MARKER x9, 7, x10, x11, x12, w13
-+
-+    // Restore original registers.
-+    ldp     x0, x30, [sp], #16
 +#endif
 +
  	// Return to arm_init()
