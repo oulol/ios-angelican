@@ -399,7 +399,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..a08d14a 100644
+index 4592d55..9c18c5d 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,7 +40,57 @@
@@ -617,7 +617,7 @@ index 4592d55..a08d14a 100644
 +    ldr     x1, [sp, #8]
 +    add     x2, sp, #16
 +
-+    bl      angelican_debug_state
++    bl      EXT(angelican_debug_state)
 +
 +    // Restore original registers.
 +    ldp     x0, x30, [sp], #16
