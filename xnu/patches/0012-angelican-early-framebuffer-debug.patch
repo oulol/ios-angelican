@@ -229,7 +229,7 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..58411a3 100644
+index 4592d55..3f41bfb 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
 @@ -40,15 +40,70 @@
@@ -453,7 +453,7 @@ index 4592d55..58411a3 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +964,28 @@ common_start:
+@@ -811,6 +964,32 @@ common_start:
  	mov	lr, x21
  #endif
  
@@ -477,6 +477,10 @@ index 4592d55..58411a3 100644
 +    bl      EXT(angelican_debug_state)
 +
 +	ANGELICAN_MARKER x9, 7, x10, x11, x12, w13
++
++	mov     x0, x22
++    mov     x30, x23
++    mov     sp, x24
 +#endif
 +
  	// Return to arm_init()
