@@ -68,10 +68,10 @@ index e26a1d7..a109b60 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..2451f55
+index 0000000..60f581e
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,269 @@
 +
 +/*
 + * Redmi 9C NFC (ANGELICAN) bootstrap framebuffer console.
@@ -288,6 +288,8 @@ index 0000000..2451f55
 +	}
 +
 +	__asm__ volatile("dsb sy" ::: "memory");
++
++	return;
 +
 +	angelican_early_string("EARLY ");
 +	angelican_early_putc((char)('0' + stage));
