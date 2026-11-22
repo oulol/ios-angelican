@@ -267,35 +267,35 @@ index e5336e5..9d8701c 100644
 +
 +	/* Select ARGB8888 color */
 +	.if \color == 0
-+		mov	\tmp, #0xFFFF
-+		movk	\tmp, #0xFFFF, lsl #16	/* White */
-+	.elseif \color == 1
-+		mov	\tmp, #0x00FF
-+		movk	\tmp, #0xFFFF, lsl #16	/* Red */
-+	.elseif \color == 2
-+		mov	\tmp, #0x80FF
-+		movk	\tmp, #0xFFFF, lsl #16	/* Orange */
-+	.elseif \color == 3
-+		mov	\tmp, #0xFF00
-+		movk \tmp, #0xFFFF, lsl #16	/* Yellow */
-+	.elseif \color == 4
-+		mov	\tmp, #0xFF00
-+		movk	\tmp, #0xFF00, lsl #16	/* Green */
-+	.elseif \color == 5
-+		mov	\tmp, #0xFFFF
-+		movk	\tmp, #0xFF00, lsl #16	/* Cyan */
-+	.elseif \color == 6
-+		mov	\tmp, #0xFF
-+		movk	\tmp, #0xFFFF, lsl #16	/* Blue */
-+	.elseif \color == 7
-+		mov	\tmp, #0x80FF
-+		movk	\tmp, #0x8000, lsl #16	/* Purple */
-+	.else
-+		.error "Invalid ANGELICAN_MARKER color"
-+	.endif
++       mov     \tmp, #0xFFFF
++       movk    \tmp, #0xFFFF, lsl #16    /* White   FF FF FF FF */
++   .elseif \color == 1
++       mov     \tmp, #0x0000
++       movk    \tmp, #0xFFFF, lsl #16    /* Red    FF FF 00 00 */
++   .elseif \color == 2
++       mov     \tmp, #0x8000
++       movk    \tmp, #0xFFFF, lsl #16    /* Orange FF FF 80 00 */
++   .elseif \color == 3
++       mov     \tmp, #0xFF00
++       movk    \tmp, #0xFFFF, lsl #16    /* Yellow FF FF FF 00 */
++   .elseif \color == 4
++       mov     \tmp, #0xFF00
++       movk    \tmp, #0xFF00, lsl #16    /* Green  FF 00 FF 00 */
++   .elseif \color == 5
++       mov     \tmp, #0xFFFF
++       movk    \tmp, #0xFF00, lsl #16    /* Cyan   FF 00 FF FF */
++   .elseif \color == 6
++       mov     \tmp, #0x00FF
++       movk    \tmp, #0xFF00, lsl #16    /* Blue   FF 00 00 FF */
++   .elseif \color == 7
++       mov     \tmp, #0x0080
++       movk    \tmp, #0xFF80, lsl #16    /* Purple FF 80 00 80 */
++   .else
++       .error "Invalid ANGELICAN_MARKER color"
++   .endif
 +
-+	mov	\rows, #32
-+	mov	\stride, #2944
++	mov	\rows, #(10 + ((7-\color) * 10))
++	mov	\stride, #64
 +
 +.Langelican_fill_row\@:
 +	mov	\pixels, #720
