@@ -371,7 +371,7 @@ def build_angelica_adt(hw, args):
         try:
             original, _ = adt.parse(adt.load(str(product_path)))
             product_node = next((n for n in original.children
-                                 if n.prop("name", b"").split(b"\0")[0] == b"product"), None)
+                                 if n.prop("name").split(b"\0")[0] == b"product"), None)
             if product_node:
                 props = [(k, v) for k, flags, v in product_node.props
                          if not flags and k not in ("name", "AAPL,phandle")]
