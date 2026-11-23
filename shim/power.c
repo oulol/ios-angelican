@@ -32,6 +32,12 @@
 #define WDT_SWRST_OFFSET        0x014
 #define WDT_SWRST_KEY           0x1209
 
+#define MT6357_RTC_PDN1       0x05B4
+#define MT6357_RTC_WRTGR      0x05C2
+
+#define RTC_PDN1_FASTBOOT     (1U << 13)
+
+
 static inline volatile uint32_t *pwrap_register(uintptr_t offset)
 {
     return (volatile uint32_t *)(PWRAP_BASE + offset);
@@ -86,6 +92,36 @@ static int pwrap_read(uint16_t address, uint16_t *result)
     *result = (uint16_t)(value & 0xFFFF);
 
     *pwrap_register(PWRAP_WACS2_VLDCLR) = 1;
+
+    return POWER_SUCCESS;
+}
+
+static int pwrap_write(uint16_t address, uint16_t value)
+{
+    if (pwrap_wait_for_state(WACS_FSM_IDLE) != POWER_SUCCESS)
+        return POWER_ERROR_POLL;
+
+    *pwrap_register(PWRAP_WACS2_CMD) =
+        (1U << 31) |
+        ((uint32_t)(address >> 1) << 16) |
+        value;
+
+    return pwrap_wait_for_state(WACS_FSM_IDLE);
+}
+
+#define MT6357_RTC_PROT   0x05BC
+#define MT6357_RTC_PDN1   0x05B4
+#define MT6357_RTC_WRTGR  0x05C2
+
+#define RTC_PDN1_FASTBOOT (1U << 13)
+
+static int rtc_write(uint16_t address, uint16_t value)
+{
+    if (pwrap_write(address, value) != POWER_SUCCESS)
+        return POWER_ERROR_PMIC;
+
+    if (pwrap_write(MT6357_RTC_WRTGR, 1) != POWER_SUCCESS)
+        return POWER_ERROR_PMIC;
 
     return POWER_SUCCESS;
 }
@@ -168,6 +204,43 @@ void power_reset(void)
             __asm__ volatile("yield");
         }
     }
+}
+
+void power_reboot_fastboot(void)
+{
+    uint16_t pdn1;
+
+    con_str("FASTBOOT", "Unlocking RTC...");
+
+    /* RTC write-protection unlock sequence. */
+    if (rtc_write(MT6357_RTC_PROT, 0x586A) != POWER_SUCCESS)
+        goto error;
+
+    if (rtc_write(MT6357_RTC_PROT, 0x9136) != POWER_SUCCESS)
+        goto error;
+
+    con_str("FASTBOOT", "Setting boot flag...");
+
+    if (pwrap_read(MT6357_RTC_PDN1, &pdn1) != POWER_SUCCESS)
+        goto error;
+
+    pdn1 |= RTC_PDN1_FASTBOOT;
+
+    if (rtc_write(MT6357_RTC_PDN1, pdn1) != POWER_SUCCESS)
+        goto error;
+
+    /* Verify the committed value. */
+    if (pwrap_read(MT6357_RTC_PDN1, &pdn1) != POWER_SUCCESS)
+        goto error;
+
+    con_hex("PDN1", pdn1);
+    
+    con_str("FASTBOOT", "Rebooting...");
+    power_reset();
+
+error:
+    con_str("FASTBOOT", "PWRAP/RTC error");
+    return;
 }
 
 void power_poll(void)

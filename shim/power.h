@@ -20,5 +20,6 @@ int volume_down_button_pressed(void);
 int power_button_pressed(void);
 /* Does not return. */
 void power_reset(void);
+void power_reboot_fastboot(void);
 /* Checks the key and resets the device if pressed. */
 void power_poll(void);

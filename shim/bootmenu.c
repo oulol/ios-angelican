@@ -22,7 +22,7 @@
 int menu_option_count(bool android, bool xnu)
 {
     return (android ? 1 : 0) +
-           (xnu ? 1 : 0) + 2;
+           (xnu ? 1 : 0) + 3;
 }
 
 static void panic(const char *reason) {
@@ -45,6 +45,7 @@ drawmenu(int selected, bool android, bool xnu)
 
     con_str("", "----------");
     MENU_ITEM("Restart");
+    MENU_ITEM("Fastboot");
     MENU_ITEM("Power off");
     con_skip_amt(-(index + 1));
 }
@@ -139,7 +140,12 @@ bootmenu(void) {
                 power_reset();
                 continue;
             }
+            index++;
 
+            if (selected == index) {
+                power_reboot_fastboot();
+                continue;
+            }
             index++;
 
             if (selected == index) {
