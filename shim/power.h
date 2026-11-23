@@ -8,6 +8,9 @@
 
 void power_init(void);
 
+
+int volume_up_button_pressed(void);
+int volume_down_button_pressed(void);
 /*
  * Returns:
  *   1  - power button pressed
@@ -15,7 +18,6 @@ void power_init(void);
  *  <0  - communication error
  */
 int power_button_pressed(void);
-
 /* Does not return. */
 void power_reset(void);
 /* Checks the key and resets the device if pressed. */

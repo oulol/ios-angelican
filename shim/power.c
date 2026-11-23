@@ -90,13 +90,28 @@ static int pwrap_read(uint16_t address, uint16_t *result)
     return POWER_SUCCESS;
 }
 
-void power_init(void)
+
+#define KPD_BASE             0x10010000UL
+#define KPD_KP_MEM1          0x004
+
+#define VOLUME_UP_MASK       0x0201
+#define VOLUME_DOWN_MASK     0x0402
+
+static inline uint32_t kpd_read(void)
 {
-    /*
-     * PWRAP is initialized by the existing boot firmware.
-     * We intentionally do not reset or reconfigure it.
-     */
+    return *(volatile uint32_t *)(KPD_BASE + KPD_KP_MEM1);
 }
+
+int volume_up_button_pressed(void)
+{
+    return (kpd_read() & VOLUME_UP_MASK) != VOLUME_UP_MASK;
+}
+
+int volume_down_button_pressed(void)
+{
+    return (kpd_read() & VOLUME_DOWN_MASK) != VOLUME_DOWN_MASK;
+}
+
 
 int power_button_pressed(void)
 {
