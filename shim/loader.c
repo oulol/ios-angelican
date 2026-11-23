@@ -3,6 +3,7 @@
 
 #include "boot_state.h"
 #include "console.h"
+#include "bootmenu.h"
 #include "mmu.h"
 #include "power.h"
 #include "watchdog.h"
@@ -201,7 +202,11 @@ void main(void) __attribute__((noreturn));
 
 void main(void)
 {
+#if defined(BOOTMENU)
+    bootmenu();
+#else
     loader_main();
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -228,14 +233,6 @@ void minimal_el1_main(void)
 
     watchdog_init();
     watchdog_service();
-
-    /* Power button */
-
-    con_str("POWER", "Initializing power key...");
-
-    power_init();
-
-    con_str("POWER", "Power polling active.");
 
     uint64_t frequency = watchdog_read_frequency();
 
