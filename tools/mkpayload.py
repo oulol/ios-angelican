@@ -210,6 +210,11 @@ def pack_macho(
     if android_files is not None:
         android_kernel, android_ramdisk = android_files
 
+        android_ramdisk_offset = len(out)
+        android_ramdisk_size = len(android_ramdisk)
+        out += android_ramdisk
+        out += b"\0" * (-len(out) & 0xf)
+
         ANDROID_IMAGE_ALIGNMENT = 0x200000
         PAYLOAD_PHYS = 0x51B00000
 
@@ -239,11 +244,6 @@ def pack_macho(
         print(f"Android Image base: {aligned_base:#x}")
         print(f"Android Image start: {PAYLOAD_PHYS + android_kernel_offset:#x}")
         print(f"Android text_offset: {android_text_offset:#x}")
-
-        android_ramdisk_offset = len(out)
-        android_ramdisk_size = len(android_ramdisk)
-        out += android_ramdisk
-        out += b"\0" * (-len(out) & 0xf)
 
     # Payload header.
     struct.pack_into(
