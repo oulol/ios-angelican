@@ -26,7 +26,6 @@ void con_clear(uint32_t bg)
 	con_bg = bg;
 	row = 0;
 }
-
 static void clear_line(void)
 {
 	int y0 = MARGIN + row * CH_H;
@@ -77,6 +76,10 @@ static void fmt_hex(char *buf, uint64_t v, int digits)
 	buf[digits] = 0;
 }
 
+void con_clear_row(void)
+{
+	clear_line();
+}
 void con_skip(void)
 {
 	row++;

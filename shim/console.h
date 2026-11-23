@@ -17,6 +17,7 @@
 extern volatile uint32_t *con_fb;
 
 void con_clear(uint32_t bg);
+void con_clear_row(void);
 void con_skip(void);
 void con_skip_amt(int amount);
 void con_up(void);
