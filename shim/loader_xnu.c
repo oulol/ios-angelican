@@ -355,6 +355,10 @@ void loader_xnu_boot(uintptr_t dtb)
     con_hex("KEVA", p->entry_va);
     con_hex("KEPA", entry_pa);
 
+#if defined(INPUTWAIT)
+    debug_wait();
+#endif
+
     con_skip();
     con_str("XNU", "Copying kernel segments");
 
@@ -426,7 +430,10 @@ void loader_xnu_boot(uintptr_t dtb)
     args->bootFlags = 0;
     /* XNU 8796 treats memSizeActual as the highest physical address + 1. */
     args->memSizeActual = layout.dram_end;
-    
+
+#if defined(INPUTWAIT)
+    debug_wait();
+#endif
     con_skip();
     con_str("XNU", "Boot arguments / memory map");
     con_hex("BA PA", boot_args_pa);
@@ -466,8 +473,11 @@ void loader_xnu_boot(uintptr_t dtb)
     con_hex("Entry PA", entry_pa);
     con_hex("boot_args PA", boot_args_pa);
     con_hex("Entry offset", p->entry_va - p->virt_base);
-    con_str("XNU", "Branching to kernel");
 
+#if defined(INPUTWAIT)
+    debug_wait();
+#endif
+    con_str("XNU", "Branching to kernel");
     /* x0 = physical boot_args pointer; PC = physical __start. */
     __asm__ volatile(
         "mov x0, %0\n"

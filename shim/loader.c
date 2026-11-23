@@ -9,6 +9,7 @@
 #include "watchdog.h"
 #include "bootinfo.h"
 #include "loader_xnu.h"
+#include "exception.h"
 #include "fdt.h"
 
 #include <stdint.h>
@@ -217,6 +218,9 @@ void minimal_el1_main(void) __attribute__((noreturn));
 
 void minimal_el1_main(void)
 {
+#if defined(INPUTWAIT)
+    debug_wait();
+#endif
     con_clear(BLACK);
     con_str("SHIM", "EL1 ENTERED");
 
@@ -249,6 +253,9 @@ void minimal_el1_main(void)
 
     bootinfo_dump((uintptr_t)boot_state.x0);
 
+#if defined(INPUTWAIT)
+    debug_wait();
+#endif
     con_clear(BLACK);
 
     // fdt_dump_memory((uintptr_t)boot_state.x0);
