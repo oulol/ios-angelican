@@ -68,14 +68,18 @@ static void print_chosen_u64(
 
 static void print_initrd_magic(uintptr_t start)
 {
+    if (!start) {
+        con_str("INITRD", "Invalid start address");
+        return;
+    }
+
     volatile const uint8_t *p =
         (volatile const uint8_t *)start;
 
     con_str("INITRD", "First 16 bytes:");
 
-    for (unsigned i = 0; i < 16; i++) {
+    for (unsigned i = 0; i < 16; i++)
         con_hex("BYTE", p[i]);
-    }
 }
 
 void bootinfo_dump(uintptr_t dtb)
@@ -119,5 +123,11 @@ void bootinfo_dump(uintptr_t dtb)
 
     con_skip();
 
-    print_initrd_magic(0x51B00000);
+    uint64_t initrd_start;
+
+    if (fdt_chosen_u64(dtb, "linux,initrd-start", &initrd_start)) {
+        print_initrd_magic((uintptr_t)initrd_start);
+    } else {
+        con_str("INITRD", "Start address not present");
+    }
 }
