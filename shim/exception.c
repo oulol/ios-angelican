@@ -327,9 +327,6 @@ void wait_loop() {
     for (;;) {
         watchdog_service();
 
-        if (exception_power_button_pressed())
-            exception_power_reset();
-
         char buf[] = "[ ] Waiting for power to reset";
         buf[1] = spinner[cursor];
 
@@ -344,10 +341,10 @@ void wait_loop() {
         while (watchdog_read_counter() - start < delay) {
             watchdog_service();
 
-            if (exception_power_button_pressed())
-                exception_power_reset();
-
             __asm__ volatile("yield");
         }
+
+        if (exception_power_button_pressed())
+            exception_power_reset();
     }
 }
