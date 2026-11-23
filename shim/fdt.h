@@ -51,4 +51,12 @@ int fdt_add_range(
     uint64_t size
 );
 
+int fdt_set_initrd(uintptr_t fdt,
+                   uint64_t start,
+                   uint64_t size);
+
+int fdt_get_initrd(uintptr_t fdt,
+                   uintptr_t *initrd_start,
+                   uint64_t *initrd_size);
+
 void fdt_dump_memory(uintptr_t fdt);

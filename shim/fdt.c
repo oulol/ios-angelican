@@ -806,6 +806,104 @@ int fdt_parse_memory_layout(uintptr_t fdt_address, fdt_layout_t *layout)
     return 1;
 }
 
+
+static void fdt_write_be32(uint8_t *p, uint32_t value)
+{
+    p[0] = (uint8_t)(value >> 24);
+    p[1] = (uint8_t)(value >> 16);
+    p[2] = (uint8_t)(value >> 8);
+    p[3] = (uint8_t)value;
+}
+
+static int fdt_store_u64(uintptr_t property,
+                         uint32_t length,
+                         uint64_t value)
+{
+    uint8_t *p = (uint8_t *)property;
+
+    if (length == 4) {
+        if (value > UINT32_MAX)
+            return 0;
+
+        fdt_write_be32(p, (uint32_t)value);
+        return 1;
+    }
+
+    if (length == 8) {
+        fdt_write_be32(p, (uint32_t)(value >> 32));
+        fdt_write_be32(p + 4, (uint32_t)value);
+        return 1;
+    }
+
+    return 0;
+}
+
+int fdt_set_initrd(uintptr_t fdt,
+                   uint64_t start,
+                   uint64_t size)
+{
+    uintptr_t start_prop;
+    uintptr_t end_prop;
+    uint32_t start_len;
+    uint32_t end_len;
+    uint64_t end;
+
+    if (!size || start > UINT64_MAX - size)
+        return 0;
+
+    end = start + size;
+
+    if (!fdt_get_chosen_property(
+            fdt, "linux,initrd-start",
+            &start_prop, &start_len))
+        return 0;
+
+    if (!fdt_get_chosen_property(
+            fdt, "linux,initrd-end",
+            &end_prop, &end_len))
+        return 0;
+
+    /* Validate both before modifying either property. */
+    if ((start_len != 4 && start_len != 8) ||
+        (end_len != 4 && end_len != 8))
+        return 0;
+
+    if ((start_len == 4 && start > UINT32_MAX) ||
+        (end_len == 4 && end > UINT32_MAX))
+        return 0;
+
+    fdt_store_u64(start_prop, start_len, start);
+    fdt_store_u64(end_prop, end_len, end);
+
+    return 1;
+}
+
+
+int fdt_get_initrd(uintptr_t fdt,
+                   uintptr_t *initrd_start,
+                   uint64_t *initrd_size)
+{
+    uint64_t start;
+    uint64_t end;
+
+    if (!initrd_start || !initrd_size)
+        return 0;
+
+    if (!fdt_chosen_u64(fdt, "linux,initrd-start", &start))
+        return 0;
+
+    if (!fdt_chosen_u64(fdt, "linux,initrd-end", &end))
+        return 0;
+
+    if (end <= start || start > UINTPTR_MAX)
+        return 0;
+
+    *initrd_start = (uintptr_t)start;
+    *initrd_size = end - start;
+
+    return 1;
+}
+
 void fdt_dump_memory(uintptr_t fdt)
 {
     fdt_layout_t layout;
