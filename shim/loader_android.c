@@ -12,9 +12,9 @@
 #include "exception.h"
 
 #define ARM64_IMAGE_MAGIC 0x644D5241U
+#define KERNEL_ALIGN (2ULL * 1024 * 1024)
 
 static void panic(const char *reason) {
-    con_skip_amt(7);
     con_str("BOOTMGR", reason);
     wait_loop();
 }
@@ -103,10 +103,14 @@ void loader_android_boot(const struct payload *payload) {
         panic("Invalid Android Image size");
     }
 
+    if (image_base < text_offset ||
+        ((image_base - text_offset) & (KERNEL_ALIGN - 1)) != 0)
+        panic("Android kernel misaligned");
+
     if (flags & 1)
         panic("Unsupported big-endian kernel");
 
-    uintptr_t entry = image_base + text_offset;
+    uintptr_t entry = image_base;
 
     con_str("BOOTMGR", "Updating FDT");
 
@@ -118,8 +122,7 @@ void loader_android_boot(const struct payload *payload) {
     con_hex2("PAYLOAD", "start=", ramdisk_start,
              "end=", ramdisk_start + ramdisk_size);
 
-    con_hex2("KERNEL", "base=", image_base,
-             "entry=", entry);
+    con_hex("ENTRY", entry);
 
     android_handoff(
         boot_state.x0,
