@@ -67,10 +67,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..b5cffcf
+index 0000000..8d7a9c0
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,240 @@
 +
 +#include <arm64/angelican_early.h>
 +
@@ -143,6 +143,9 @@ index 0000000..b5cffcf
 +
 +    if (early_disabled)
 +        return;
++
++	EARLY_FB[0] = 0xFF00FF00;
++	__asm__ volatile("dsb sy" ::: "memory");
 +
 +    if (!early_started) {
 +        early_started = 1;
@@ -392,10 +395,10 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..f55a885 100644
+index 4592d55..7e8067b 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -40,15 +40,70 @@
+@@ -40,16 +40,67 @@
  #include <arm/pmap.h>
  #endif /* __ARM_KERNEL_PROTECT__ */
  
@@ -460,23 +463,12 @@ index 4592d55..f55a885 100644
  	bl		EXT(pinst_set_vbar)
  	mov	lr, x1
 -#else
-+#elif !defined(ANGELICAN)
  	msr		VBAR_EL1, x0
-+#else
-+	nop
- #endif
+-#endif
  .endmacro
  
-@@ -130,7 +185,7 @@ LEXT(reset_vector)
- 	msr		OSLAR_EL1, xzr
- 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
- 
--#if !(defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR))
-+#if !(defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR)) && !defined(ANGELICAN)
- 	// Set low reset vector before attempting any loads
- 	adrp    x0, EXT(LowExceptionVectorBase)@page
- 	add     x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -463,6 +518,10 @@ LEXT(start_first_cpu)
+ .macro MSR_TCR_EL1_X1
+@@ -463,6 +514,10 @@ LEXT(start_first_cpu)
  	mov		x20, x0
  	mov		x21, #0
  
@@ -487,7 +479,7 @@ index 4592d55..f55a885 100644
  	// Set low reset vector before attempting any loads
  	adrp	x0, EXT(LowExceptionVectorBase)@page
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -609,6 +668,84 @@ Lkernelcache_base_found:
+@@ -609,6 +664,84 @@ Lkernelcache_base_found:
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
  
@@ -572,7 +564,7 @@ index 4592d55..f55a885 100644
  	/* Ensure TTEs are visible */
  	dsb		ish
  
-@@ -633,6 +770,10 @@ Lkernelcache_base_found:
+@@ -633,6 +766,10 @@ Lkernelcache_base_found:
   */
  common_start:
  
@@ -583,7 +575,7 @@ index 4592d55..f55a885 100644
  #if HAS_NEX_PG
  	mov x19, lr
  	bl		EXT(set_nex_pg)
-@@ -662,6 +803,10 @@ common_start:
+@@ -662,6 +799,10 @@ common_start:
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
  
@@ -594,7 +586,7 @@ index 4592d55..f55a885 100644
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
  	mov		x1, #(MAIR_WRITEBACK << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_WRITEBACK))
-@@ -685,6 +830,10 @@ common_start:
+@@ -685,6 +826,10 @@ common_start:
  	tlbi	vmalle1
  	dsb		ish
  
@@ -605,7 +597,7 @@ index 4592d55..f55a885 100644
  
  #if defined(BCM2837)
  	// Setup timer interrupt routing; must be done before MMU is enabled
-@@ -755,6 +904,10 @@ common_start:
+@@ -755,6 +900,10 @@ common_start:
  	bne		.
  #endif /* !VMAPPLE && !ANGELICAN */
  
@@ -616,7 +608,7 @@ index 4592d55..f55a885 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +964,34 @@ common_start:
+@@ -811,6 +960,34 @@ common_start:
  	mov	lr, x21
  #endif
  
