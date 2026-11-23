@@ -1,7 +1,9 @@
 #include "fdt.h"
 #include "console.h"
 #include "exception.h"
-
+#include "payload.h"
+#include "adt.h"
+#include "memory.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -35,37 +37,8 @@
  * This file does not parse Mach-O or resolve chained fixups.
  */
 
-#define PAYLOAD_MAGIC          "SWEETXNU"
-#define PAYLOAD_MAGIC_SIZE     8U
-#define PAYLOAD_VERSION        1U
-#define PAYLOAD_MAX_SEGS       128U
-#define BOOT_LINE_LENGTH       608U
 #define PAGE_16K               0x4000ULL
 #define ONE_GIB                0x40000000ULL
-
-#define ADT_MAX_DEPTH          16U
-
-struct payload_seg {
-    uint64_t vmaddr;
-    uint64_t vmsize;
-    uint64_t file_off;
-    uint64_t file_size;
-};
-
-struct payload {
-    char magic[8];
-    uint32_t version;
-    uint32_t nsegs;
-    uint64_t virt_base;
-    uint64_t entry_va;
-    uint64_t adt_off;
-    uint64_t adt_size;
-    uint64_t kernel_end;
-    uint64_t phys_base; /* ADT /chosen/dram-base: actual DRAM base. */
-    uint64_t mem_size;  /* ADT /chosen/dram-size: actual DRAM size. */
-    char cmdline[BOOT_LINE_LENGTH];
-    struct payload_seg segs[];
-};
 
 struct boot_video {
     uint64_t v_baseAddr;
@@ -92,15 +65,6 @@ struct boot_args {
     uint64_t memSizeActual;
 };
 
-_Static_assert(offsetof(struct payload, segs) == 0x2A8,
-               "Unexpected payload header layout");
-_Static_assert(offsetof(struct boot_args, Video) == 40,
-               "Unexpected boot_args Video offset");
-_Static_assert(offsetof(struct boot_args, CommandLine) == 108,
-               "Unexpected boot_args CommandLine offset");
-_Static_assert(sizeof(struct boot_args) == 736,
-               "Unexpected boot_args size");
-
 static __attribute__((noreturn))
 void xnu_error(const char *message, uint64_t value)
 {
@@ -110,379 +74,6 @@ void xnu_error(const char *message, uint64_t value)
     wait_loop();
 }
 
-static int add_overflow_u64(uint64_t a, uint64_t b, uint64_t *result)
-{
-    *result = a + b;
-    return *result < a;
-}
-
-static int range_end(const struct phys_range *range, uint64_t *end)
-{
-    if (!range->size)
-        return 0;
-    return !add_overflow_u64(range->base, range->size, end);
-}
-
-static int range_inside(uint64_t address, uint64_t size,
-                        uint64_t start, uint64_t end)
-{
-    uint64_t range_end_value;
-    if (add_overflow_u64(address, size, &range_end_value))
-        return 0;
-    return address >= start && range_end_value <= end;
-}
-
-static int ranges_overlap(uint64_t a, uint64_t a_size,
-                          uint64_t b, uint64_t b_size)
-{
-    uint64_t a_end, b_end;
-    if (add_overflow_u64(a, a_size, &a_end) ||
-        add_overflow_u64(b, b_size, &b_end))
-        return 1;
-    return a < b_end && b < a_end;
-}
-
-static int align_up_checked(uint64_t value, uint64_t alignment,
-                            uint64_t *result)
-{
-    uint64_t add = alignment - 1;
-    if (value > UINT64_MAX - add)
-        return 0;
-    *result = (value + add) & ~add;
-    return 1;
-}
-
-static uint64_t align_down(uint64_t value, uint64_t alignment)
-{
-    return value & ~(alignment - 1);
-}
-
-static void copy_bytes(void *destination, const void *source, uint64_t size)
-{
-    uint8_t *dst = (uint8_t *)destination;
-    const uint8_t *src = (const uint8_t *)source;
-    for (uint64_t i = 0; i < size; i++)
-        dst[i] = src[i];
-}
-
-static void zero_bytes(void *destination, uint64_t size)
-{
-    uint8_t *dst = (uint8_t *)destination;
-    for (uint64_t i = 0; i < size; i++)
-        dst[i] = 0;
-}
-
-static int payload_magic_ok(const struct payload *p)
-{
-    for (unsigned i = 0; i < PAYLOAD_MAGIC_SIZE; i++) {
-        if (p->magic[i] != PAYLOAD_MAGIC[i])
-            return 0;
-    }
-    return 1;
-}
-
-static struct payload *find_payload(uintptr_t initrd_start,
-                                    uint64_t initrd_size)
-{
-    const uint8_t *data = (const uint8_t *)initrd_start;
-    if (initrd_size < sizeof(struct payload))
-        return NULL;
-
-    for (uint64_t i = 0;
-         i <= initrd_size - sizeof(struct payload);
-         i++) {
-        uintptr_t candidate = initrd_start + (uintptr_t)i;
-        if (data[i] != 'S' || (candidate & 7U))
-            continue;
-        struct payload *p = (struct payload *)candidate;
-        if (payload_magic_ok(p))
-            return p;
-    }
-    return NULL;
-}
-
-static int translate_address(uint64_t virt_base, uint64_t phys_base,
-                             uint64_t virtual_address,
-                             uint64_t *physical_address)
-{
-    if (virtual_address < virt_base)
-        return 0;
-    return !add_overflow_u64(phys_base,
-                             virtual_address - virt_base,
-                             physical_address);
-}
-
-/* Apple ADT uses little-endian nodes: nprops, nchildren, then properties. */
-static uint32_t adt_le32(const uint8_t *p)
-{
-    return (uint32_t)p[0] |
-           ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
-}
-
-static uint64_t adt_le64(const uint8_t *p)
-{
-    return (uint64_t)adt_le32(p) | ((uint64_t)adt_le32(p + 4) << 32);
-}
-
-static int adt_fixed_name_equal(const uint8_t name[32], const char *text)
-{
-    uint32_t i = 0;
-    while (text[i]) {
-        if (i >= 32 || name[i] != (uint8_t)text[i])
-            return 0;
-        i++;
-    }
-    return i < 32 && name[i] == 0;
-}
-
-static int adt_value_equal(const uint8_t *value, uint32_t length,
-                           const char *text)
-{
-    uint32_t i = 0;
-    while (text[i]) {
-        if (i >= length || value[i] != (uint8_t)text[i])
-            return 0;
-        i++;
-    }
-    return i < length && value[i] == 0;
-}
-
-struct adt_memory_info {
-    uint64_t dram_base;
-    uint64_t dram_size;
-    uint8_t have_dram_base;
-    uint8_t have_dram_size;
-};
-
-static int adt_walk_node(const uint8_t *blob, uint32_t blob_size,
-                         uint32_t *offset, uint32_t depth,
-                         struct adt_memory_info *info,
-                         struct fdt_layout *layout)
-{
-    uint32_t nprops, nchildren;
-    const uint8_t *node_name = NULL;
-    uint32_t node_name_len = 0;
-    const uint8_t *dram_base_value = NULL;
-    const uint8_t *dram_size_value = NULL;
-    uint32_t dram_base_len = 0, dram_size_len = 0;
-
-    if (depth >= ADT_MAX_DEPTH || *offset > blob_size ||
-        blob_size - *offset < 8)
-        return 0;
-
-    nprops = adt_le32(blob + *offset);
-    nchildren = adt_le32(blob + *offset + 4);
-    *offset += 8;
-
-    for (uint32_t i = 0; i < nprops; i++) {
-        const uint8_t *prop_name;
-        const uint8_t *value;
-        uint32_t size_field, length, padded;
-
-        if (*offset > blob_size || blob_size - *offset < 36)
-            return 0;
-
-        prop_name = blob + *offset;
-        size_field = adt_le32(blob + *offset + 32);
-        length = size_field & 0x7FFFFFFFU;
-        *offset += 36;
-
-        if (length > blob_size - *offset)
-            return 0;
-        value = blob + *offset;
-        padded = (length + 3U) & ~3U;
-        if (padded > blob_size - *offset)
-            return 0;
-
-        if (adt_fixed_name_equal(prop_name, "name")) {
-            node_name = value;
-            node_name_len = length;
-        } else if (depth == 1 &&
-                   adt_fixed_name_equal(prop_name, "dram-base")) {
-            dram_base_value = value;
-            dram_base_len = length;
-        } else if (depth == 1 &&
-                   adt_fixed_name_equal(prop_name, "dram-size")) {
-            dram_size_value = value;
-            dram_size_len = length;
-        } else if (adt_fixed_name_equal(prop_name, "reg") &&
-                length >= 16 && (length % 16) == 0 &&
-                node_name &&
-                (adt_value_equal(node_name, node_name_len, "pram") ||
-                    adt_value_equal(node_name, node_name_len, "angelican-fbcon"))) {
-
-            for (uint32_t reg_off = 0; reg_off < length; reg_off += 16) {
-                uint64_t base = adt_le64(value + reg_off);
-                uint64_t size = adt_le64(value + reg_off + 8);
-
-                if (!fdt_add_range(layout->reserved,
-                                &layout->reserved_count,
-                                FDT_MAX_RESERVED, base, size))
-                    return 0;
-            }
-        }
-
-        *offset += padded;
-    }
-
-    if (depth == 1 && node_name &&
-        adt_value_equal(node_name, node_name_len, "chosen")) {
-        if (!dram_base_value || dram_base_len != 8 ||
-            !dram_size_value || dram_size_len != 8)
-            return 0;
-        info->dram_base = adt_le64(dram_base_value);
-        info->dram_size = adt_le64(dram_size_value);
-        info->have_dram_base = 1;
-        info->have_dram_size = 1;
-    }
-
-    for (uint32_t i = 0; i < nchildren; i++) {
-        if (!adt_walk_node(blob, blob_size, offset, depth + 1,
-                           info, layout))
-            return 0;
-    }
-
-    return 1;
-}
-
-static int adt_parse_memory_info(const uint8_t *blob, uint32_t blob_size,
-                                 struct adt_memory_info *info,
-                                 struct fdt_layout *layout)
-{
-    uint32_t offset = 0;
-    info->dram_base = 0;
-    info->dram_size = 0;
-    info->have_dram_base = 0;
-    info->have_dram_size = 0;
-
-    if (!blob || !blob_size ||
-        !adt_walk_node(blob, blob_size, &offset, 0, info, layout))
-        return 0;
-
-    return info->have_dram_base && info->have_dram_size;
-}
-
-static void sort_ranges(struct phys_range *ranges, uint32_t count)
-{
-    for (uint32_t i = 1; i < count; i++) {
-        struct phys_range key = ranges[i];
-        uint32_t j = i;
-        while (j > 0 && ranges[j - 1].base > key.base) {
-            ranges[j] = ranges[j - 1];
-            j--;
-        }
-        ranges[j] = key;
-    }
-}
-
-static int find_kernel_memory_window(
-    fdt_layout_t *layout,
-    uint64_t *base_out,
-    uint64_t *size_out
-) {
-    if (!base_out || !size_out)
-        return 0;
-
-    *base_out = 0;
-    *size_out = 0;
-
-    if (!layout || layout->memory_count != 1)
-        return 0;
-
-    const uint64_t ram_base = layout->memory[0].base;
-    const uint64_t ram_size = layout->memory[0].size;
-
-    if (!ram_size || ram_base > UINT64_MAX - ram_size)
-        return 0;
-
-    const uint64_t ram_end = ram_base + ram_size;
-
-    uint64_t cursor = ram_base;
-    uint64_t best_base = 0;
-    uint64_t best_size = 0;
-
-    // Sort reservations by ascending base address.
-    for (uint32_t i = 0; i < layout->reserved_count; i++) {
-        for (uint32_t j = i + 1; j < layout->reserved_count; j++) {
-            if (layout->reserved[j].base < layout->reserved[i].base) {
-                phys_range_t temp = layout->reserved[i];
-                layout->reserved[i] = layout->reserved[j];
-                layout->reserved[j] = temp;
-            }
-        }
-    }
-
-    for (uint32_t i = 0; i < layout->reserved_count; i++) {
-        const phys_range_t *r = &layout->reserved[i];
-
-        if (!r->size || r->base > UINT64_MAX - r->size)
-            continue;
-
-        uint64_t reserved_base = r->base;
-        uint64_t reserved_end = r->base + r->size;
-
-        // Ignore reservations outside RAM.
-        if (reserved_end <= ram_base || reserved_base >= ram_end)
-            continue;
-
-        // Clip reservation to RAM boundaries.
-        if (reserved_base < ram_base)
-            reserved_base = ram_base;
-
-        if (reserved_end > ram_end)
-            reserved_end = ram_end;
-
-        // Check the gap before this reservation.
-        if (reserved_base > cursor) {
-            uint64_t aligned_base =
-                (cursor + PAGE_16K - 1) & ~(PAGE_16K - 1);
-
-            uint64_t aligned_end =
-                reserved_base & ~(PAGE_16K - 1);
-
-            if (aligned_end > aligned_base) {
-                uint64_t gap_size = aligned_end - aligned_base;
-
-                if (gap_size > best_size) {
-                    best_base = aligned_base;
-                    best_size = gap_size;
-                }
-            }
-        }
-
-        // Advance cursor, accounting for overlapping reservations.
-        if (reserved_end > cursor)
-            cursor = reserved_end;
-
-        if (cursor >= ram_end)
-            break;
-    }
-
-    // Check the remaining RAM after the final reservation.
-    if (cursor < ram_end) {
-        uint64_t aligned_base =
-            (cursor + PAGE_16K - 1) & ~(PAGE_16K - 1);
-
-        uint64_t aligned_end =
-            ram_end & ~(PAGE_16K - 1);
-
-        if (aligned_end > aligned_base) {
-            uint64_t gap_size = aligned_end - aligned_base;
-
-            if (gap_size > best_size) {
-                best_base = aligned_base;
-                best_size = gap_size;
-            }
-        }
-    }
-
-    *base_out = best_base;
-    *size_out = best_size;
-
-    return best_size > ONE_GIB;
-}
 
 static int segment_contains_entry(const struct payload *p)
 {
@@ -555,6 +146,24 @@ static void angelican_check_smpen(void)
     con_hex("SMPEN", (value >> 6) & 1);
 }
 
+
+static void copy_bytes(void *destination, const void *source, uint64_t size)
+{
+    uint8_t *dst = (uint8_t *)destination;
+    const uint8_t *src = (const uint8_t *)source;
+    for (uint64_t i = 0; i < size; i++)
+        dst[i] = src[i];
+}
+
+static void zero_bytes(void *destination, uint64_t size)
+{
+    uint8_t *dst = (uint8_t *)destination;
+    for (uint64_t i = 0; i < size; i++)
+        dst[i] = 0;
+}
+
+
+
 /*
  * Public entry point. Call from EL1 with the runtime FDT addr.
  */
@@ -598,7 +207,7 @@ void loader_xnu_boot(uintptr_t dtb)
 
     if (layout.unresolved_count) {
         con_str("FDT", "Linux dynamic reservation requests present");
-        con_hex("Dyn req", layout.unresolved_count);
+        con_hex("Dynamic request count", layout.unresolved_count);
     }
 
     if (!range_inside((uint64_t)dtb, layout.total_size,
@@ -627,16 +236,16 @@ void loader_xnu_boot(uintptr_t dtb)
         xnu_error("Too many runtime reservations", layout.reserved_count);
 
     con_str("FDT", "Runtime memory map");
-    con_hex("DRAM bse", layout.dram_base);
-    con_hex("DRAM sze", layout.total_ram_size);
-    con_hex("DRAM end", layout.dram_end);
-    con_hex("RES cnt", layout.reserved_count);
+    con_hex("DRAM b", layout.dram_base);
+    con_hex("DRAM s", layout.total_ram_size);
+    con_hex("DRAM e", layout.dram_end);
+    con_hex("ResRanges", layout.reserved_count);
     con_hex("IRD strt", initrd_start);
     con_hex("IRD end", initrd_end);
 
-    p = find_payload((uintptr_t)initrd_start, initrd_size);
+    p = payload_find((uintptr_t)initrd_start, initrd_size);
     if (!p)
-        xnu_error("SWEETXNU payload not found", initrd_start);
+        xnu_error("ANGELXNU payload not found", initrd_start);
 
     if (p->version != PAYLOAD_VERSION)
         xnu_error("Unsupported payload version", p->version);
@@ -691,8 +300,8 @@ void loader_xnu_boot(uintptr_t dtb)
 
 
     if (!find_kernel_memory_window(&layout, &managed_base, &managed_size)) {
-        con_hex("FREE bse", managed_base);
-        con_hex("FREE sze", managed_size);
+        con_hex("Largest free base", managed_base);
+        con_hex("Largest free size", managed_size);
         //xnu_error("No RAM window > 1 GiB", managed_size);
     }
 
