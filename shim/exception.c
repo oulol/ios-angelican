@@ -2,92 +2,10 @@
 
 #include "console.h"
 #include "watchdog.h"
+#include "power.h"
 
 #include <stdint.h>
 
-#define PWRAP_BASE       0x1000D000UL
-#define PWRAP_WACS2_EN   0x09C
-#define PWRAP_INIT_DONE2 0x0A0
-#define PWRAP_WACS2_CMD  0xC20
-#define PWRAP_WACS2_RDATA 0xC24
-#define PWRAP_WACS2_VLDCLR 0xC28
-
-#define MT6357_TOPSTATUS 0x24
-#define POWER_KEY_BIT    (1U << 1)
-
-#define WDT_MODE         0x10007000UL
-#define WDT_SWRST        0x10007014UL
-
-static inline void mmio_write(uintptr_t addr, uint32_t value) {
-    *(volatile uint32_t *)addr = value;
-}
-
-static inline uint32_t mmio_read(uintptr_t addr) {
-    return *(volatile uint32_t *)addr;
-}
-
-static int exception_pwrap_read(uint16_t address, uint16_t *value) {
-    uintptr_t base = PWRAP_BASE;
-
-    if (!(mmio_read(base + PWRAP_WACS2_EN) & 1))
-        return 0;
-
-    if (!(mmio_read(base + PWRAP_INIT_DONE2) & 1))
-        return 0;
-
-    /* Wait until WACS2 is idle. */
-    for (unsigned int i = 0; i < 100000; i++) {
-        uint32_t status = mmio_read(base + PWRAP_WACS2_RDATA);
-
-        if (((status >> 16) & 0x7) == 0)
-            break;
-
-        if (i == 99999)
-            return 0;
-    }
-
-    /* Issue a 16-bit PMIC read. */
-    mmio_write(base + PWRAP_WACS2_CMD, (uint32_t)(address >> 1) << 16);
-
-    /* Wait for valid response. */
-    for (unsigned int i = 0; i < 100000; i++) {
-        uint32_t status = mmio_read(base + PWRAP_WACS2_RDATA);
-
-        if (((status >> 16) & 0x7) == 6) {
-            *value = status & 0xFFFF;
-            mmio_write(base + PWRAP_WACS2_VLDCLR, 1);
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-static int exception_power_button_pressed(void) {
-    uint16_t status;
-
-    if (!exception_pwrap_read(MT6357_TOPSTATUS, &status))
-        return 0;
-
-    /* Active-low power-key status. */
-    return !(status & POWER_KEY_BIT);
-}
-
-static void exception_power_reset(void) {
-    volatile uint32_t *wdt_mode = (volatile uint32_t *)WDT_MODE;
-    volatile uint32_t *wdt_swrst = (volatile uint32_t *)WDT_SWRST;
-
-    uint32_t mode = *wdt_mode;
-    mode &= ~(1U << 3);
-    *wdt_mode = mode | 0x22000000U;
-
-    __asm__ volatile("dsb sy");
-
-    for (;;) {
-        *wdt_swrst = 0x1209;
-        __asm__ volatile("dsb sy");
-    }
-}
 
 static volatile uint32_t exception_active;
 
@@ -344,7 +262,29 @@ void wait_loop() {
             __asm__ volatile("yield");
         }
 
-        if (exception_power_button_pressed())
-            exception_power_reset();
+        if (power_button_pressed())
+            power_reset();
+    }
+}
+
+void debug_wait() {
+    con_str("DEBUG", "WAITING FOR VOL-");
+    for (;;) {
+        watchdog_service();
+
+        uint64_t start = watchdog_read_counter();
+        uint64_t delay = watchdog_read_frequency() / 5;
+
+        while (watchdog_read_counter() - start < delay) {
+            watchdog_service();
+
+            __asm__ volatile("yield");
+        }
+
+        if (volume_down_button_pressed()) {
+            con_clear_row();
+            con_up();
+            return;
+        }
     }
 }

@@ -17,3 +17,4 @@ void el1_exception_dispatch(
 ) __attribute__((noreturn));
 
 void wait_loop(void);
+void debug_wait(void);
