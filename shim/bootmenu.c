@@ -12,8 +12,11 @@
 #include "fdt.h"
 #include "loader_android.h"
 
+#define MENU_ITEM(name) \
+    con_str(selected == index ? "      >" : "", name); \
+    index++;
 
-#define ANDROID "Android"
+#define ANDROID "Android/Linux"
 #define XNU "iOS (XNU)"
 
 int menu_option_count(bool android, bool xnu)
@@ -34,28 +37,16 @@ drawmenu(int selected, bool android, bool xnu)
     int index = 0;
 
     if (android) {
-        con_str(selected == index ? "      >" : "", ANDROID);
-        index++;
+        MENU_ITEM(ANDROID)
     }
     if (xnu) {
-        con_str(selected == index ? "      >" : "", XNU);
-        index++;
+        MENU_ITEM(XNU)
     }
 
-    if (!android && !xnu) {
-        con_str("", "No compatible payload found.");
-        con_str("", "Use mkpayload.py to build one with XNU and optionally Android.");
-        con_skip();
-    }
-
-    con_str(selected == index ? "      >" : "", "Restart");
-    index++;
-    con_str(selected == index ? "      >" : "", "Power Off");
+    con_str("", "----------");
+    MENU_ITEM("Restart");
+    MENU_ITEM("Power off");
     con_skip_amt(-(index + 1));
-    
-    if (!android && !xnu) {
-        con_skip_amt(-3);
-    }
 }
 
 void
@@ -92,6 +83,11 @@ bootmenu(void) {
         android = false;
     } else {
         android = payload->has_android == 1;
+    }
+
+    if (!android && !xnu) {
+        con_str("", "No compatible payload found.");
+        con_str("", "Use mkpayload.py to build one with XNU and optionally Android.");
     }
 
     int option_count = menu_option_count(android, xnu);
