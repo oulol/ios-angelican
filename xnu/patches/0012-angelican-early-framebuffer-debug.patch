@@ -395,10 +395,10 @@ index d89b0f1..8879dcc 100644
  
  	flush_mmu_tlb();
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index 4592d55..7e8067b 100644
+index 4592d55..293984b 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -40,16 +40,67 @@
+@@ -40,14 +40,66 @@
  #include <arm/pmap.h>
  #endif /* __ARM_KERNEL_PROTECT__ */
  
@@ -464,11 +464,9 @@ index 4592d55..7e8067b 100644
  	mov	lr, x1
 -#else
  	msr		VBAR_EL1, x0
--#endif
+ #endif
  .endmacro
- 
- .macro MSR_TCR_EL1_X1
-@@ -463,6 +514,10 @@ LEXT(start_first_cpu)
+@@ -463,6 +515,10 @@ LEXT(start_first_cpu)
  	mov		x20, x0
  	mov		x21, #0
  
@@ -479,7 +477,7 @@ index 4592d55..7e8067b 100644
  	// Set low reset vector before attempting any loads
  	adrp	x0, EXT(LowExceptionVectorBase)@page
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -609,6 +664,84 @@ Lkernelcache_base_found:
+@@ -609,6 +665,84 @@ Lkernelcache_base_found:
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
  
@@ -564,7 +562,7 @@ index 4592d55..7e8067b 100644
  	/* Ensure TTEs are visible */
  	dsb		ish
  
-@@ -633,6 +766,10 @@ Lkernelcache_base_found:
+@@ -633,6 +767,10 @@ Lkernelcache_base_found:
   */
  common_start:
  
@@ -575,7 +573,7 @@ index 4592d55..7e8067b 100644
  #if HAS_NEX_PG
  	mov x19, lr
  	bl		EXT(set_nex_pg)
-@@ -662,6 +799,10 @@ common_start:
+@@ -662,6 +800,10 @@ common_start:
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
  
@@ -586,7 +584,7 @@ index 4592d55..7e8067b 100644
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
  	mov		x1, #(MAIR_WRITEBACK << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_WRITEBACK))
-@@ -685,6 +826,10 @@ common_start:
+@@ -685,6 +827,10 @@ common_start:
  	tlbi	vmalle1
  	dsb		ish
  
@@ -597,7 +595,7 @@ index 4592d55..7e8067b 100644
  
  #if defined(BCM2837)
  	// Setup timer interrupt routing; must be done before MMU is enabled
-@@ -755,6 +900,10 @@ common_start:
+@@ -755,6 +901,10 @@ common_start:
  	bne		.
  #endif /* !VMAPPLE && !ANGELICAN */
  
@@ -608,7 +606,7 @@ index 4592d55..7e8067b 100644
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower
  	 *
-@@ -811,6 +960,34 @@ common_start:
+@@ -811,6 +961,34 @@ common_start:
  	mov	lr, x21
  #endif
  
