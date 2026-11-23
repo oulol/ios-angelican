@@ -16,7 +16,7 @@
  * properties; they are NOT used as the kernel's physical load base.
  *
  * This loader:
- *   - finds the prepared SWEETXNU payload in /chosen's initrd;
+ *   - finds the prepared ANGELXNU payload in /chosen's initrd;
  *   - parses /memory, /reserved-memory, and the FDT reservation map;
  *   - excludes the initrd and runtime FDT themselves;
  *   - chooses the largest 16-KiB-aligned contiguous free RAM interval;

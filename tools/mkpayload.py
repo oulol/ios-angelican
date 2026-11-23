@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pack an XNU kernel Mach-O and an Apple Device Tree into SWEETXNU payload.
+"""Pack an XNU kernel Mach-O and an Apple Device Tree into ANGELXNU payload.
 
 Usage: mkpayload.py KERNEL ADT OUT [--cmdline "..."] [--android UNPACKEDBOOTFOLDER]
 """
