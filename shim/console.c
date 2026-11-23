@@ -81,7 +81,10 @@ void con_skip(void)
 {
 	row++;
 }
-
+void con_skip_amt(int amount)
+{
+	row += amount;
+}
 void con_up(void)
 {
 	row--;
