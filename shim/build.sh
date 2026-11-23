@@ -8,13 +8,34 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Arguments
 # ---------------------------------------------------------------------------
 
-if (( $# > 1 )); then
-    echo "Usage: $0 [payload.bin]" >&2
-    exit 1
-fi
+BOOTMENU=0
+PAYLOAD=""
+
+while (( $# > 0 )); do
+    case "$1" in
+        --bootmenu)
+            BOOTMENU=1
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--bootmenu] [payload.bin]"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            if [[ -n "$PAYLOAD" ]]; then
+                echo "Only one payload can be specified." >&2
+                exit 1
+            fi
+            PAYLOAD="$1"
+            ;;
+    esac
+    shift
+done
 
 CALLER_DIR="$PWD"
-PAYLOAD="${1:-}"
 
 if [[ -n "$PAYLOAD" && "$PAYLOAD" != /* ]]; then
     PAYLOAD="$CALLER_DIR/$PAYLOAD"
@@ -101,6 +122,13 @@ FLAGS=(
     -Wall
     -Wextra
 )
+
+if (( BOOTMENU )); then
+    FLAGS+=(-DBOOTMENU)
+    echo "Boot menu: enabled"
+else
+    echo "Boot menu: disabled"
+fi
 
 # ---------------------------------------------------------------------------
 # Discover sources
