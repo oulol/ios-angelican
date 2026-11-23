@@ -9,12 +9,16 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # ---------------------------------------------------------------------------
 
 BOOTMENU=0
+INPUTWAIT=0
 PAYLOAD=""
 
 while (( $# > 0 )); do
     case "$1" in
         --bootmenu)
             BOOTMENU=1
+            ;;
+        --inputwait)
+            INPUTWAIT=1
             ;;
         --help|-h)
             echo "Usage: $0 [--bootmenu] [payload.bin]"
@@ -129,6 +133,14 @@ if (( BOOTMENU )); then
 else
     echo "Boot menu: disabled"
 fi
+
+if (( INPUTWAIT )); then
+    FLAGS+=(-DINPUTWAIT)
+    echo "Input wait: enabled"
+else
+    echo "Input wait: disabled"
+fi
+
 
 # ---------------------------------------------------------------------------
 # Discover sources
