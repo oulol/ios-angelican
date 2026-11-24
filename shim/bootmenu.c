@@ -13,11 +13,12 @@
 #include "loader_android.h"
 
 #define MENU_ITEM(name) \
-    con_str(selected == index ? "      >" : "", name); \
+    con_str(selected == index ? selected_marker : "", name); \
     index++;
 
 #define ANDROID "Android/Linux"
 #define XNU "iOS (XNU)"
+#define AUTOBOOT_TIMER 8
 
 int menu_option_count(bool android, bool xnu)
 {
@@ -32,9 +33,31 @@ static void panic(const char *reason) {
 }
 
 void
-drawmenu(int selected, bool android, bool xnu)
+drawmenu(int selected, bool android, bool xnu, int timer)
 {
     int index = 0;
+    char selected_marker[8] = "      > ";
+
+    if (timer > 0) {
+        int n = timer;
+        int i = 5;
+
+        while (n > 0 && i >= 0) {
+            selected_marker[i--] = '0' + (n % 10);
+            n /= 10;
+        }
+
+        int start = i + 1;
+        int len = 6 - start;
+
+        for (int j = 0; j < len; j++)
+            selected_marker[j] = selected_marker[start + j];
+
+        selected_marker[len] = 's';
+
+        while (++len < 6)
+            selected_marker[len] = ' ';
+    }
 
     if (android) {
         MENU_ITEM(ANDROID)
@@ -47,7 +70,49 @@ drawmenu(int selected, bool android, bool xnu)
     MENU_ITEM("Restart");
     MENU_ITEM("Fastboot");
     MENU_ITEM("Power off");
+
+    if (timer > 0) {
+        con_skip();
+        con_str("", "Selected option will boot automatically");
+        con_skip_amt(-2);
+    }
     con_skip_amt(-(index + 1));
+}
+
+static void select(bool android, bool xnu, int selected, struct payload *payload) {
+    int index = 0;
+
+    if (android) {
+        if (selected == index) {
+            loader_android_boot(payload);
+            return;
+        }
+        index++;
+    }
+
+    if (xnu) {
+        if (selected == index) {
+            loader_main();
+            return;
+        }
+        index++;
+    }
+
+    if (selected == index) {
+        power_reset();
+        return;
+    }
+    index++;
+
+    if (selected == index) {
+        power_reboot_fastboot();
+        return;
+    }
+    index++;
+
+    if (selected == index) {
+        return;
+    }
 }
 
 void
@@ -92,65 +157,47 @@ bootmenu(void) {
     }
 
     int option_count = menu_option_count(android, xnu);
-    drawmenu(selected, android, xnu);
+    int timer_left = AUTOBOOT_TIMER;
+    int timer_cycle = 0;
+    drawmenu(selected, android, xnu, timer_left);
     for (;;) {
         watchdog_service();
 
         uint64_t start = watchdog_read_counter();
         uint64_t delay = watchdog_read_frequency() / 10;
-
         while (watchdog_read_counter() - start < delay) {
             watchdog_service();
             __asm__ volatile("yield");
+        }
+
+        if (timer_left > 0) {
+            timer_cycle++;
+            if (timer_cycle == 10) {
+                timer_left--;
+                timer_cycle = 0;
+                drawmenu(selected, android, xnu, timer_left);
+            }
+        } else if (timer_left == 0) {
+            select(android, xnu, selected, payload);
+            timer_left = -1;
         }
 
         int downC = volume_down_button_pressed();
         int upC = volume_up_button_pressed();
 
         if (upC != upP && upC == 1) {
+            timer_left = -1;
             selected = selected - 1;
             if (selected < 0) {
                 selected = option_count-1;
             }
-            drawmenu(selected, android, xnu);
+            drawmenu(selected, android, xnu, timer_left);
         } else if (downC != downP && downC == 1) {
+            timer_left = -1;
             selected = (selected + 1) % option_count;
-            drawmenu(selected, android, xnu);
+            drawmenu(selected, android, xnu, timer_left);
         } else if (power_button_pressed()) {
-            int index = 0;
-
-            if (android) {
-                if (selected == index) {
-                    con_str("BOOTMGR", "Android selected");
-                    loader_android_boot(payload);
-                    continue;
-                }
-                index++;
-            }
-
-            if (xnu) {
-                if (selected == index) {
-                    loader_main();
-                    continue;
-                }
-                index++;
-            }
-
-            if (selected == index) {
-                power_reset();
-                continue;
-            }
-            index++;
-
-            if (selected == index) {
-                power_reboot_fastboot();
-                continue;
-            }
-            index++;
-
-            if (selected == index) {
-                continue;
-            }
+            select(android, xnu, selected, payload);
         }
 
         downP = volume_down_button_pressed();
