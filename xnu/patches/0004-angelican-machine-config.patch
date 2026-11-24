@@ -32,7 +32,7 @@ index 5bd6f23..4f5b97b 100644
  endif
  
 diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
-index 133b07f..c98fc5f 100644
+index 133b07f..46807fb 100644
 --- a/osfmk/arm64/proc_reg.h
 +++ b/osfmk/arm64/proc_reg.h
 @@ -221,6 +221,14 @@
@@ -50,6 +50,19 @@ index 133b07f..c98fc5f 100644
  #else
  #error processor not supported
  #endif
+@@ -960,11 +968,7 @@
+ #define T1SZ_BOOT 17ULL
+ #endif /* !__ARM64_PMAP_SUBPAGE_L1__ */
+ #else /* __ARM_16K_PG__ */
+-#if __ARM64_PMAP_SUBPAGE_L1__
+-#define T1SZ_BOOT 26ULL
+-#else /* __ARM64_PMAP_SUBPAGE_L1__ */
+-#define T1SZ_BOOT 25ULL
+-#endif /*__ARM64_PMAP_SUBPAGE_L1__*/
++#define T1SZ_BOOT 23ULL
+ #endif /* __ARM_16K_PG__ */
+ #endif /* defined(APPLE_ARM64_ARCH_FAMILY) */
+ 
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 index e5336e5..4592d55 100644
 --- a/osfmk/arm64/start.s
