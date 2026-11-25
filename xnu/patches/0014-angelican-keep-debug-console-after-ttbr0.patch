@@ -39,7 +39,7 @@ index f819fea..db2b971 100644
  	tlb.h \
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..8122e26 100644
+index 2e25c7a..11deaca 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -93,7 +93,7 @@ index 2e25c7a..8122e26 100644
      angelican_early_string(": ");
      angelican_early_string(label);
      angelican_early_putc('\n');
-@@ -156,10 +161,18 @@ angelican_early_panic(const char *fmt, va_list *args)
+@@ -156,10 +161,19 @@ angelican_early_panic(const char *fmt, va_list *args)
      __asm__ volatile("dsb sy" ::: "memory");
  }
  
@@ -102,6 +102,7 @@ index 2e25c7a..8122e26 100644
 +{
 +	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +	early_fb = (volatile uint32_t *)(uintptr_t)base;
++    angelican_early_mark(8, "fb pointer updated");
 +	__asm__ volatile("dsb sy" ::: "memory");
 +	angelican_early_mark(9, "kernel framebuffer VA live");
 +}
