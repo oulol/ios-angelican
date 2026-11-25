@@ -67,10 +67,10 @@ index e26a1d7..173d438 100644
  	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..0dcfd62
+index 0000000..477929f
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,164 @@
 +/*
 + * Redmi 9C NFC early framebuffer console.
 + *
@@ -169,6 +169,9 @@ index 0000000..0dcfd62
 +    }
 +
 +    early_col++;
++    for (volatile unsigned int i = 0; i < 10000000; i++) {
++        __asm__ volatile("nop");
++    }
 +}
 +
 +static void
@@ -197,7 +200,7 @@ index 0000000..0dcfd62
 +
 +    __asm__ volatile("dsb sy" ::: "memory");
 +
-+    angelican_early_string("ANGELICAN EARLY ");
++    angelican_early_string("EARLY ");
 +    angelican_early_putc((char)('0' + stage));
 +    angelican_early_string(": ");
 +    angelican_early_string(label);
@@ -212,7 +215,7 @@ index 0000000..0dcfd62
 +    }
 +
 +    early_panicking = 1;
-+    angelican_early_string("\nANGELICAN EARLY PANIC: ");
++    angelican_early_string("\nEARLY PANIC: ");
 +
 +    va_list copy;
 +    va_copy(copy, *args);
