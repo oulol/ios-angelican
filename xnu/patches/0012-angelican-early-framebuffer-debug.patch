@@ -65,19 +65,32 @@ index e26a1d7..173d438 100644
  	arm_vm_init(xmaxmem, args);
  
  	if (debug_boot_arg) {
+diff --git a/osfmk/arm64/Makefile b/osfmk/arm64/Makefile
+index f819fea..db2b971 100644
+--- a/osfmk/arm64/Makefile
++++ b/osfmk/arm64/Makefile
+@@ -40,6 +40,7 @@ EXPORT_MD_LIST = \
+ 	monotonic.h \
+ 	perfmon_arm64_regs.h \
+ 	proc_reg.h \
++	angelican_early.h \
+ 	asm.h \
+ 	tlb.h \
+ 	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..477929f
+index 0000000..6b1c9d1
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,177 @@
 +/*
 + * Redmi 9C NFC early framebuffer console.
 + *
 + * No allocation, locks, ADT parsing or per-CPU state: panic() can reach this
 + * before a current thread exists. start.s must identity-map the framebuffer
 + * through the bootstrap page tables. This console must be disabled before
-+ * arm_vm_init tears down that mapping.
++ * arm_vm_init installs a reserved kernel VA alias before removing TTBR0;
++ * retain this console until the normal framebuffer serial console is ready.
 + */
 +#include <arm64/angelican_early.h>
 +
@@ -87,7 +100,8 @@ index 0000000..477929f
 +#include <kern/misc_protos.h>
 +
 +/* Redmi 9C NFC framebuffer: ARGB8888, 720x1600, 2944-byte row pitch. */
-+#define EARLY_FB               ((volatile uint32_t *)(uintptr_t)0x7EC50000)
++static volatile uint32_t *early_fb = (volatile uint32_t *)(uintptr_t)0x7EC50000;
++#define EARLY_FB               early_fb
 +#define EARLY_WIDTH            720u
 +#define EARLY_HEIGHT           1600u
 +#define EARLY_STRIDE_BYTES     2944u
@@ -169,7 +183,7 @@ index 0000000..477929f
 +    }
 +
 +    early_col++;
-+    for (volatile unsigned int i = 0; i < 10000000; i++) {
++    for (volatile unsigned int i = 0; i < 2500000; i++) {
 +        __asm__ volatile("nop");
 +    }
 +}
@@ -185,15 +199,15 @@ index 0000000..477929f
 +void
 +angelican_early_mark(unsigned int stage, const char *label)
 +{
-+    if (early_disabled || stage > 8) {
++    if (early_disabled || stage > 20) {
 +        return;
 +    }
 +
-+    uint32_t color = 0xFF00FF00u | (stage * 28u << 16);
++    uint32_t color = 0xff00ff00u | ((stage & 7u) * 32u << 16);
 +
 +    /* Reserve the bottom 32 scanlines for the stage indicator. */
 +    for (unsigned int y = EARLY_HEIGHT - 32u; y < EARLY_HEIGHT; y++) {
-+        for (unsigned int x = stage * 64u; x < (stage + 1u) * 64u; x++) {
++        for (unsigned int x = stage * 48; x < (stage + 1) * 48; x++) {
 +            EARLY_FB[y * EARLY_STRIDE + x] = color;
 +        }
 +    }
@@ -201,7 +215,10 @@ index 0000000..477929f
 +    __asm__ volatile("dsb sy" ::: "memory");
 +
 +    angelican_early_string("EARLY ");
-+    angelican_early_putc((char)('0' + stage));
++    if (stage >= 10) {
++		angelican_early_putc((char)('0' + stage / 10));
++	}
++	angelican_early_putc((char)('0' + stage % 10));
 +    angelican_early_string(": ");
 +    angelican_early_string(label);
 +    angelican_early_putc('\n');
@@ -226,6 +243,14 @@ index 0000000..477929f
 +    __asm__ volatile("dsb sy" ::: "memory");
 +}
 +
++sweet_early_relocate(uint64_t base)
++{
++	sweet_early_mark(8, "leaving bootstrap TTBR0");
++	early_fb = (volatile uint32_t *)(uintptr_t)base;
++	__asm__ volatile("dsb sy" ::: "memory");
++	sweet_early_mark(9, "kernel framebuffer VA live");
++}
++
 +void
 +angelican_early_disable(void)
 +{
@@ -237,22 +262,24 @@ index 0000000..477929f
 +#endif /* ANGELICAN */
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..40195d1
+index 0000000..2f9e618
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,27 @@
-+/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
+@@ -0,0 +1,29 @@
++/* Screen diagnostics through bootstrap TTBR0 and the final kernel TTBR1. */
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
 +
 +#include <pexpert/arm64/board_config.h>
 +#include <stdarg.h>
++#include <stdint.h>
 +
 +#if defined(ANGELICAN)
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_putc(char c);
 +void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_disable(void);
++void angelican_early_relocate(uint64_t base);
 +#else
 +static inline void
 +angelican_early_mark(unsigned int stage, const char *label)
@@ -269,7 +296,7 @@ index 0000000..40195d1
 +
 +#endif /* _ARM64_ANGELICAN_EARLY_H_ */
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index d89b0f1..8879dcc 100644
+index d89b0f1..e6389b2 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -41,6 +41,7 @@
@@ -280,15 +307,113 @@ index d89b0f1..8879dcc 100644
  #include <arm/cpu_data_internal.h>
  #include <arm/misc_protos.h>
  #include <pexpert/arm64/boot.h>
-@@ -2145,6 +2146,8 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -1812,6 +1813,65 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+ #define ARM64_PHYSMAP_SLIDE_RANGE (1ULL << 30) // 1 GB
+ #define ARM64_PHYSMAP_SLIDE_MASK  (ARM64_PHYSMAP_SLIDE_RANGE - 1)
+ 
++#if defined(ANGELICAN)
++/*
++ * The reserved low-globals/kernel region is excluded from VM allocation.
++ * Use the otherwise empty 32MB block above low globals and below gVirtBase
++ * for a Normal-NC framebuffer alias that survives bootstrap TTBR0 teardown.
++ */
++#define ANGELICAN_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
++
++#define ANGELICAN_EARLY_FB_PA        0x7EC50000ULL
++#define ANGELICAN_EARLY_FB_PA_BASE   0x7EC00000ULL
++#define ANGELICAN_EARLY_FB_OFFSET   (ANGELICAN_EARLY_FB_PA - ANGELICAN_EARLY_FB_PA_BASE)
++#define ANGELICAN_EARLY_FB_BLOCKS    3
++#define ANGELICAN_EARLY_FB_MAP_SIZE  (ANGELICAN_EARLY_FB_BLOCKS * ARM_TT_L2_SIZE)
++
++static void
++angelican_early_map_final(void)
++{
++    const vm_map_address_t va = ANGELICAN_EARLY_FB_VA;
++
++    assert((va & ARM_TT_L2_OFFMASK) == 0);
++    assert(va + ANGELICAN_EARLY_FB_MAP_SIZE <= gVirtBase);
++
++    /* Ensure all three blocks fit in the same L2 table. */
++    assert((va & ARM_TT_L1_INDEX_MASK) ==
++        ((va + ANGELICAN_EARLY_FB_MAP_SIZE - 1) & ARM_TT_L1_INDEX_MASK));
++
++    tt_entry_t l1 =
++        cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
++
++    assert((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) ==
++        (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE));
++
++    tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
++
++    const unsigned int first =
++        (unsigned int)((va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT);
++
++    for (unsigned int i = 0; i < ANGELICAN_EARLY_FB_BLOCKS; i++) {
++        tt_entry_t *slot = &l2[first + i];
++
++        assert(*slot == ARM_TTE_EMPTY);
++
++        const uint64_t pa =
++            ANGELICAN_EARLY_FB_PA_BASE + ((uint64_t)i * ARM_TT_L2_SIZE);
++
++        *slot = (pa & ARM_TTE_BLOCK_L2_MASK) |
++            ARM_TTE_VALID |
++            ARM_TTE_TYPE_BLOCK |
++            ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
++            ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
++            ARM_TTE_BLOCK_AF |
++            ARM_TTE_BLOCK_PNX |
++            ARM_TTE_BLOCK_NX;
++    }
++
++    __asm__ volatile("dsb ishst" ::: "memory");
++}
++#endif
++
+ void
+ arm_vm_init(uint64_t memory_size, boot_args * args)
+ {
+@@ -2140,19 +2200,28 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 
+ 	arm_set_user_tbi();
+ 
++#if defined(ANGELICAN)
++	angelican_early_map_final();
++#endif
++
+ 	arm_vm_physmap_init(args);
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
  
  	ml_enable_monitor();
  
 +	/* The framebuffer VA=PA mapping belongs to the outgoing TTBR0. */
-+	angelican_early_disable();
++#if defined(ANGELICAN)
++	angelican_early_relocate(ANGELICAN_EARLY_FB_VA + ANGELICAN_EARLY_FB_OFFSET);
++#endif
  	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
  
  	flush_mmu_tlb();
++	angelican_early_mark(10, "TTBR0 off; TLB flushed");
+ 	kva_active = TRUE;
+ 	// global table pointers may need to be different due to physical aperture remapping
+ 	cpu_tte = (tt_entry_t*)(phystokv(cpu_ttep));
+ 	invalid_tte = (tt_entry_t*)(phystokv(invalid_ttep));
+-
++	angelican_early_mark(11, "physmap table pointers rebound");
+ 	// From here on out, we're off the bootstrap translation tables.
+ 
+ 
+@@ -2244,8 +2313,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+     }
+ #endif
+ #endif
++	angelican_early_mark(12, "calling pmap_bootstrap");
+ 	pmap_bootstrap(dynamic_memory_begin);
+-
++	angelican_early_mark(13, "pmap_bootstrap done");
+ 	disable_preemption();
+ 
+ 	/*
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 index 4592d55..0986e56 100644
 --- a/osfmk/arm64/start.s
