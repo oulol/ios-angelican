@@ -79,10 +79,10 @@ index f819fea..db2b971 100644
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..9877f5c
+index 0000000..3b01886
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,182 @@
 +/*
 + * Redmi 9C NFC early framebuffer console.
 + *
@@ -101,7 +101,7 @@ index 0000000..9877f5c
 +
 +/* Redmi 9C NFC framebuffer: ARGB8888, 720x1600, 2944-byte row pitch. */
 +static volatile uint32_t *early_fb = (volatile uint32_t *)(uintptr_t)0x7EC50000;
-+#define EARLY_FB               early_fb
++#define EARLY_FB               ((volatile uint32_t *)(uintptr_t)0x7EC50000)
 +#define EARLY_WIDTH            720u
 +#define EARLY_HEIGHT           1600u
 +#define EARLY_STRIDE_BYTES     2944u
@@ -247,6 +247,7 @@ index 0000000..9877f5c
 +    __asm__ volatile("dsb sy" ::: "memory");
 +}
 +
++void
 +angelican_early_relocate(uint64_t base)
 +{
 +	angelican_early_mark(8, "leaving bootstrap TTBR0");
