@@ -79,10 +79,10 @@ index f819fea..db2b971 100644
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..da27761
+index 0000000..9877f5c
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,181 @@
 +/*
 + * Redmi 9C NFC early framebuffer console.
 + *
@@ -206,8 +206,12 @@ index 0000000..da27761
 +    uint32_t color = 0xff00ff00u | ((stage & 7u) * 32u << 16);
 +
 +    /* Reserve the bottom 32 scanlines for the stage indicator. */
++    const unsigned int x_start = (stage-1) * 48;
++    const unsigned int x_end =
++        (x_start + 48 < EARLY_WIDTH) ? x_start + 48 : EARLY_WIDTH;
++
 +    for (unsigned int y = EARLY_HEIGHT - 32u; y < EARLY_HEIGHT; y++) {
-+        for (unsigned int x = stage * 48; x < (stage + 1) * 48; x++) {
++        for (unsigned int x = x_start; x < x_end; x++) {
 +            EARLY_FB[y * EARLY_STRIDE + x] = color;
 +        }
 +    }
@@ -243,12 +247,12 @@ index 0000000..da27761
 +    __asm__ volatile("dsb sy" ::: "memory");
 +}
 +
-+sweet_early_relocate(uint64_t base)
++angelican_early_relocate(uint64_t base)
 +{
-+	sweet_early_mark(8, "leaving bootstrap TTBR0");
++	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +	early_fb = (volatile uint32_t *)(uintptr_t)base;
 +	__asm__ volatile("dsb sy" ::: "memory");
-+	sweet_early_mark(9, "kernel framebuffer VA live");
++	angelican_early_mark(9, "kernel framebuffer VA live");
 +}
 +
 +void
@@ -262,10 +266,10 @@ index 0000000..da27761
 +#endif /* ANGELICAN */
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
 new file mode 100644
-index 0000000..2f9e618
+index 0000000..cc38d38
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.h
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,35 @@
 +/* Screen diagnostics through bootstrap TTBR0 and the final kernel TTBR1. */
 +#ifndef _ARM64_ANGELICAN_EARLY_H_
 +#define _ARM64_ANGELICAN_EARLY_H_
@@ -278,14 +282,20 @@ index 0000000..2f9e618
 +void angelican_early_mark(unsigned int stage, const char *label);
 +void angelican_early_putc(char c);
 +void angelican_early_panic(const char *fmt, va_list *args);
-+void angelican_early_disable(void);
 +void angelican_early_relocate(uint64_t base);
++void angelican_early_disable(void);
 +#else
 +static inline void
 +angelican_early_mark(unsigned int stage, const char *label)
 +{
 +    (void)stage;
 +    (void)label;
++}
++
++static inline void
++angelican_early_disable(uint64_t base)
++{
++    (void)base;
 +}
 +
 +static inline void
