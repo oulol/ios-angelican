@@ -79,7 +79,7 @@ index f819fea..db2b971 100644
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 new file mode 100644
-index 0000000..6b1c9d1
+index 0000000..da27761
 --- /dev/null
 +++ b/osfmk/arm64/angelican_early.c
 @@ -0,0 +1,177 @@
@@ -183,7 +183,7 @@ index 0000000..6b1c9d1
 +    }
 +
 +    early_col++;
-+    for (volatile unsigned int i = 0; i < 2500000; i++) {
++    for (volatile unsigned int i = 0; i < 10000000; i++) {
 +        __asm__ volatile("nop");
 +    }
 +}
