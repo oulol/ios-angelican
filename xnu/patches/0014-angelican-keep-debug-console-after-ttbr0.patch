@@ -39,7 +39,7 @@ index f819fea..db2b971 100644
  	tlb.h \
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..11deaca 100644
+index 2e25c7a..e97864f 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -93,18 +93,15 @@ index 2e25c7a..11deaca 100644
      angelican_early_string(": ");
      angelican_early_string(label);
      angelican_early_putc('\n');
-@@ -156,10 +161,19 @@ angelican_early_panic(const char *fmt, va_list *args)
+@@ -156,10 +161,16 @@ angelican_early_panic(const char *fmt, va_list *args)
      __asm__ volatile("dsb sy" ::: "memory");
  }
  
 +void
 +angelican_early_relocate(uint64_t base)
 +{
-+	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +	early_fb = (volatile uint32_t *)(uintptr_t)base;
-+    angelican_early_mark(8, "fb pointer updated");
 +	__asm__ volatile("dsb sy" ::: "memory");
-+	angelican_early_mark(9, "kernel framebuffer VA live");
 +}
 +
  void
@@ -137,7 +134,7 @@ index 40195d1..3c6a40d 100644
  #else
  static inline void
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 8879dcc..b040a28 100644
+index 8879dcc..bc13a33 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1813,6 +1813,67 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -208,7 +205,7 @@ index 8879dcc..b040a28 100644
  void
  arm_vm_init(uint64_t memory_size, boot_args * args)
  {
-@@ -2141,20 +2202,29 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2141,20 +2202,35 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  	arm_set_user_tbi();
  
@@ -224,11 +221,17 @@ index 8879dcc..b040a28 100644
  	/* The framebuffer VA=PA mapping belongs to the outgoing TTBR0. */
 -	angelican_early_disable();
 +#if defined(ANGELICAN)
-+	angelican_early_relocate(ANGELICAN_EARLY_FB_VA + ANGELICAN_EARLY_FB_OFFSET);
++	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +#endif
 +
  	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
  
++#if defined(ANGELICAN)
++	angelican_early_relocate(ANGELICAN_EARLY_FB_VA + ANGELICAN_EARLY_FB_OFFSET);
++
++	angelican_early_mark(9, "kernel framebuffer VA live");
++#endif
++
  	flush_mmu_tlb();
 +	angelican_early_mark(10, "TTBR0 off; TLB flushed");
  	kva_active = TRUE;
@@ -239,7 +242,7 @@ index 8879dcc..b040a28 100644
  
  	// From here on out, we're off the bootstrap translation tables.
  
-@@ -2247,7 +2317,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2247,7 +2323,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
      }
  #endif
  #endif
@@ -249,7 +252,7 @@ index 8879dcc..b040a28 100644
  
  	disable_preemption();
  
-@@ -2298,6 +2370,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2298,6 +2376,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  		va_l1 = va_l2_end;
  		cpu_l1_tte++;
  	}
