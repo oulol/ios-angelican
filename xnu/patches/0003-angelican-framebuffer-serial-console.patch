@@ -18,8 +18,8 @@ index 997a4ab..fefeef8 100644
 +#define ANGELICAN_FBCON_STRIDE      2944u
 +
 +#define ANGELICAN_FBCON_SCALE       2u
-+#define ANGELICAN_FBCON_FG          0xFFFFFFFFu
-+#define ANGELICAN_FBCON_BG          0xFF000000u
++#define ANGELICAN_FBCON_FG          0xFF000000u
++#define ANGELICAN_FBCON_BG          0xFFFFFFFFu
 +
 +#define ANGELICAN_FBCON_CHAR_WIDTH  8u
 +#define ANGELICAN_FBCON_CHAR_HEIGHT 16u
