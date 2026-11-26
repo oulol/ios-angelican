@@ -154,7 +154,7 @@ index 40195d1..2ba32bb 100644
  #else
  static inline void
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 8879dcc..ad544e5 100644
+index 8879dcc..40fb2f3 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1813,6 +1813,67 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -231,7 +231,7 @@ index 8879dcc..ad544e5 100644
  
 +#if defined(ANGELICAN)
 +	angelican_early_map_final();
-+	angelican_early_mark(8, "leaving bootstrap TTBR0");
++	angelican_early_mark(8, "leaving bootstrap");
 +	angelican_early_mark(8, "test");
 +#endif
 +
