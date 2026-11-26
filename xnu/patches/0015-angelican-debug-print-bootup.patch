@@ -1,0 +1,42 @@
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+index 47a3ce5..635e3cf 100644
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -598,6 +598,7 @@ arm_init(
+ 	cpu_machine_idle_init(TRUE);
+ 
+ 	PE_init_platform(TRUE, &BootCpuData);
++	kprintf("ANGELICAN: PE_init_platform returned\n");
+ 
+ #if __arm64__
+ 	extern bool cpu_config_correct;
+@@ -606,7 +607,8 @@ arm_init(
+ 	}
+ 
+ 	ml_map_cpu_pio();
+-
++	kprintf("ANGELICAN: ml_map_cpu_pio returned\n");
++	
+ #if APPLE_ARM64_ARCH_FAMILY
+ 	configure_late_apple_regs();
+ #endif
+@@ -614,6 +616,7 @@ arm_init(
+ #endif
+ 
+ 	cpu_timebase_init(TRUE);
++	kprintf("ANGELICAN: cpu_timebase_init returned\n");
+ 
+ #if KPERF
+ 	/* kptimer_curcpu_up() must be called after cpu_timebase_init */
+@@ -621,8 +624,10 @@ arm_init(
+ #endif /* KPERF */
+ 
+ 	PE_init_cpu();
+-	fiq_context_init(TRUE);
++	kprintf("ANGELICAN: PE_init_cpu returned\n");
+ 
++	fiq_context_init(TRUE);
++	kprintf("ANGELICAN: fiq_context_init returned\n");
+ 
+ #if HIBERNATION
+ 	pal_hib_init();
