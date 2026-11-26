@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-index 47a3ce5..635e3cf 100644
+index e26a1d7..ba571ad 100644
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
-@@ -598,6 +598,7 @@ arm_init(
+@@ -582,6 +582,7 @@ arm_init(
  	cpu_machine_idle_init(TRUE);
  
  	PE_init_platform(TRUE, &BootCpuData);
@@ -10,7 +10,7 @@ index 47a3ce5..635e3cf 100644
  
  #if __arm64__
  	extern bool cpu_config_correct;
-@@ -606,7 +607,8 @@ arm_init(
+@@ -590,7 +591,8 @@ arm_init(
  	}
  
  	ml_map_cpu_pio();
@@ -20,7 +20,7 @@ index 47a3ce5..635e3cf 100644
  #if APPLE_ARM64_ARCH_FAMILY
  	configure_late_apple_regs();
  #endif
-@@ -614,6 +616,7 @@ arm_init(
+@@ -598,6 +600,7 @@ arm_init(
  #endif
  
  	cpu_timebase_init(TRUE);
@@ -28,7 +28,7 @@ index 47a3ce5..635e3cf 100644
  
  #if KPERF
  	/* kptimer_curcpu_up() must be called after cpu_timebase_init */
-@@ -621,8 +624,10 @@ arm_init(
+@@ -605,8 +608,10 @@ arm_init(
  #endif /* KPERF */
  
  	PE_init_cpu();
@@ -40,3 +40,88 @@ index 47a3ce5..635e3cf 100644
  
  #if HIBERNATION
  	pal_hib_init();
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+index 3ad743f..5a61a78 100644
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -73,6 +73,8 @@ pe_init_fiq()
+ 	int error;
+ 	DTEntry entry;
+ 
++	kprintf("FIQ 1: entered\n");
++
+ 	// gicd_base is 0x0 only before it's initialized by the boot processor.
+ 	// Avoid calling SecureDT* routines on secondary processors to avoid
+ 	// race conditions because they are not thread-safe.
+@@ -120,11 +122,16 @@ pe_init_fiq()
+ 		gicr_size = gicr_size_prop;
+ 	}
+ 
++	kprintf("FIQ 2: GICD=%lx GICR=%lx size=%lx\n",
++    	gicd_base, gicr_base, gicr_size);
++
+ 	// Find the redistributor for this processor
+ 	vm_offset_t gicr_pe_base = find_gicr_pe_base();
++	kprintf("FIQ 3: redistributor=%lx\n", gicr_pe_base);
+ 
+ 	// Mark this PE to be awake
+ 	uint32_t gicr_waker = gicr_read32(GICR_WAKER);
++	kprintf("FIQ 4: WAKER=%x\n", gicr_waker);
+ 	if (gicr_waker & GICR_WAKER_CHILDRENASLEEP) {
+ 		gicr_waker &= ~GICR_WAKER_PROCESSORSLEEP;
+ 
+@@ -140,6 +147,7 @@ pe_init_fiq()
+ 			}
+ 		}
+ 	}
++	kprintf("FIQ 5: redistributor awake\n");
+ 
+ 	// Configure timers and legacy FIQ to be group 0
+ 	gicr_write32(GICR_IGROUPR0, 0x81FFFFFF);
+@@ -147,27 +155,46 @@ pe_init_fiq()
+ 	// Enable PPI 27
+ 	gicr_write32(GICR_ISENABLER0, (1 << 27));
+ 
++	kprintf("FIQ 6: enabling ICC_SRE_EL1\n");
+ 	// Enable system register access
+ 	uint64_t icc_sre = __builtin_arm_rsr64("ICC_SRE_EL1");
+ 	icc_sre |= ICC_SRE_SRE;
+ 	__builtin_arm_wsr64("ICC_SRE_EL1", icc_sre);
+ 	__builtin_arm_isb(ISB_SY);
++	
++	kprintf("FIQ 6a: ICC_SRE_EL1 enabled, value=%lx\n",
++		__builtin_arm_rsr64("ICC_SRE_EL1"));
+ 
+ 	// Set priority masks and binary point for group 0
+ 	__builtin_arm_wsr64("ICC_BPR0_EL1", 0);
+ 	__builtin_arm_wsr64("ICC_PMR_EL1", 0xFF);
+ 
++	kprintf("FIQ 7: before ISC_CTLR_EL1\n");
++
+ 	// Set EOI mode of this processor
+ 	uint64_t icc_ctlr = __builtin_arm_rsr64("ICC_CTLR_EL1");
++	kprintf("FIQ 7a: ICC_CTLR_EL1 read=%lx\n", icc_ctlr);
++
+ 	icc_ctlr &= ~ICC_CTLR_EOIMODE;
+ 	__builtin_arm_wsr64("ICC_CTLR_EL1", icc_ctlr);
+ 
++	kprintf("FIQ 7b: ICC_CTLR_EL1 written\n");
++
++	kprintf("FIQ 8: before GICD_CTLR\n");
++
+ 	// Enable the forwarding of the vtimer interrupt
+ 	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
++	kprintf("FIQ 8a: GICD_CTLR=%x\n", gicd_ctlr);
++
+ 	gicd_ctlr |= GICD_CTLR_ENABLEGRP0;
+ 	gicd_write32(GICD_CTLR, gicd_ctlr);
++
++	kprintf("FIQ 8b: GICD_CTLR written\n");
++
+ 	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
++
++	kprintf("FIQ 9: pe_init_fiq completed\n");
+ }
+ #else
+ void
