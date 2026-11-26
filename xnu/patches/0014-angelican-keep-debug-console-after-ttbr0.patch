@@ -288,16 +288,15 @@ index efbd6cb..d0bf4eb 100644
  #include <pexpert/arm/protos.h>
  #include <kern/sched_prim.h>
  #if HIBERNATION
-@@ -944,9 +945,11 @@ angelican_fb_serial_functions =
- static void
- angelican_fb_probe(void)
- {
-+	angelican_early_mark(17, "fbcon config read; mapping");
- 	angelican_fb = (volatile uint32_t *)
- 	    ml_io_map_wcomb(ANGELICAN_FBCON_BASE, ANGELICAN_FBCON_SIZE);
--
-+	angelican_early_mark(18, "fbcon mapping returned");
-+	
- 	if (angelican_fb != NULL) {
- 		register_serial_functions(&angelican_fb_serial_functions);
- 	}
+@@ -935,8 +935,10 @@ angelican_fb_probe(void)
+     }
+
+     /* Map physical framebuffer into kernel virtual address space. */
++       angelican_early_mark(17, "fbcon config read; mapping");
+     angelican_fb = (volatile uint32_t *)
+         ml_io_map_wcomb(reg[0], reg[1]);
++       angelican_early_mark(18, "fbcon mapping returned");
+
+     if (angelican_fb != NULL) {
+         register_serial_functions(&angelican_fb_serial_functions);
+
