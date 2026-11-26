@@ -39,7 +39,7 @@ index f819fea..db2b971 100644
  	tlb.h \
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..e97864f 100644
+index 2e25c7a..bfab6af 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -87,9 +87,9 @@ index 2e25c7a..e97864f 100644
      angelican_early_string("EARLY ");
 -    angelican_early_putc((char)('0' + stage));
 +    if (stage >= 10) {
-+        sweet_early_putc((char)('0' + stage / 10));
++        angelican_early_putc((char)('0' + stage / 10));
 +    }
-+    sweet_early_putc((char)('0' + stage % 10));
++    angelican_early_putc((char)('0' + stage % 10));
      angelican_early_string(": ");
      angelican_early_string(label);
      angelican_early_putc('\n');
@@ -134,7 +134,7 @@ index 40195d1..3c6a40d 100644
  #else
  static inline void
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 8879dcc..33f0ec0 100644
+index 8879dcc..793cb53 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1813,6 +1813,67 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -150,11 +150,11 @@ index 8879dcc..33f0ec0 100644
 + * XNU uses 4 KiB pages, but ARM_TT_L2_SIZE is still 2 MiB:
 + * the framebuffer's 4.5 MiB span requires three L2 block entries.
 + */
-+#define ANGELICAN_EARLY_FB_VA          (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
++#define ANGELICAN_EARLY_FB_VA          (LOW_GLOBAL_BASE_ADDRESS + ARM_TT_L2_SIZE)
 +#define ANGELICAN_EARLY_FB_PA_BASE     0x7EC00000ULL
 +#define ANGELICAN_EARLY_FB_BLOCK_COUNT 3
 +#define ANGELICAN_EARLY_FB_MAP_SIZE    (ANGELICAN_EARLY_FB_BLOCK_COUNT * ARM_TT_L2_SIZE)
-+#define ANGELICAN_EARLY_FB_OFFSET (0x7EC50000ULL - ANGELICAN_EARLY_FB_PA_BASE)
++#define ANGELICAN_EARLY_FB_OFFSET      (0x7EC50000ULL - ANGELICAN_EARLY_FB_PA_BASE)
 +
 +static void
 +angelican_early_map_final(void)
