@@ -39,7 +39,7 @@ index f819fea..db2b971 100644
  	tlb.h \
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..b1cc749 100644
+index 2e25c7a..70e3b08 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -68,6 +68,15 @@ index 2e25c7a..b1cc749 100644
  #define EARLY_SCALE            2u
  #define EARLY_CELL_W           (8u * EARLY_SCALE)
  #define EARLY_CELL_H           (16u * EARLY_SCALE)
+@@ -98,7 +101,7 @@ angelican_early_putc(char c)
+ 
+     early_col++;
+ #if defined(SLOWEARLY)
+-    for (volatile unsigned int i = 0; i < 5000000; i++) {
++    for (volatile unsigned int i = 0; i < 2500000; i++) {
+         __asm__ volatile("nop");
+     }
+ #endif
 @@ -115,15 +118,18 @@ angelican_early_string(const char *s)
  void
  angelican_early_mark(unsigned int stage, const char *label)
@@ -86,7 +95,7 @@ index 2e25c7a..b1cc749 100644
      /* Reserve the bottom 32 scanlines for the stage indicator. */
      for (unsigned int y = EARLY_HEIGHT - 32u; y < EARLY_HEIGHT; y++) {
 -        for (unsigned int x = stage * 64u; x < (stage + 1u) * 64u; x++) {
-+        for (unsigned int x = x_start; x_end; x++) {
++        for (unsigned int x = x_start; x < x_end; x++) {
              EARLY_FB[y * EARLY_STRIDE + x] = color;
          }
      }
