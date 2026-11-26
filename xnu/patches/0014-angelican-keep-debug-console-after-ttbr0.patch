@@ -26,20 +26,8 @@ index 173d438..47a3ce5 100644
  
  	serialmode = 0;
  	if (PE_parse_boot_argn("serial", &serialmode, sizeof(serialmode))) {
-diff --git a/osfmk/arm64/Makefile b/osfmk/arm64/Makefile
-index f819fea..db2b971 100644
---- a/osfmk/arm64/Makefile
-+++ b/osfmk/arm64/Makefile
-@@ -40,6 +40,7 @@ EXPORT_MD_LIST = \
- 	monotonic.h \
- 	perfmon_arm64_regs.h \
- 	proc_reg.h \
-+	angelican_early.h \
- 	asm.h \
- 	tlb.h \
- 	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..025d5f5 100644
+index 2e25c7a..b1cc749 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -52,7 +40,7 @@ index 2e25c7a..025d5f5 100644
   */
  #include <arm64/angelican_early.h>
  
-@@ -14,12 +15,15 @@
+@@ -14,12 +15,14 @@
  #include <kern/misc_protos.h>
  
  /* Redmi 9C NFC framebuffer: ARGB8888, 720x1600, 2944-byte row pitch. */
@@ -65,20 +53,10 @@ index 2e25c7a..025d5f5 100644
  #define EARLY_STRIDE           (EARLY_STRIDE_BYTES / sizeof(uint32_t))
  
 +#define EARLY_MARK_WIDTH 36u
-+
  #define EARLY_SCALE            2u
  #define EARLY_CELL_W           (8u * EARLY_SCALE)
  #define EARLY_CELL_H           (16u * EARLY_SCALE)
-@@ -104,7 +108,7 @@ angelican_early_putc(char c)
- #endif
- }
- 
--static void
-+void
- angelican_early_string(const char *s)
- {
-     while (*s) {
-@@ -115,15 +119,18 @@ angelican_early_string(const char *s)
+@@ -115,15 +118,18 @@ angelican_early_string(const char *s)
  void
  angelican_early_mark(unsigned int stage, const char *label)
  {
@@ -100,7 +78,7 @@ index 2e25c7a..025d5f5 100644
              EARLY_FB[y * EARLY_STRIDE + x] = color;
          }
      }
-@@ -131,7 +138,10 @@ angelican_early_mark(unsigned int stage, const char *label)
+@@ -131,7 +137,10 @@ angelican_early_mark(unsigned int stage, const char *label)
      __asm__ volatile("dsb sy" ::: "memory");
  
      angelican_early_string("EARLY ");
@@ -112,7 +90,7 @@ index 2e25c7a..025d5f5 100644
      angelican_early_string(": ");
      angelican_early_string(label);
      angelican_early_putc('\n');
-@@ -156,10 +166,16 @@ angelican_early_panic(const char *fmt, va_list *args)
+@@ -156,10 +165,16 @@ angelican_early_panic(const char *fmt, va_list *args)
      __asm__ volatile("dsb sy" ::: "memory");
  }
  
@@ -131,10 +109,10 @@ index 2e25c7a..025d5f5 100644
      __asm__ volatile("dsb sy" ::: "memory");
  }
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
-index 40195d1..2ba32bb 100644
+index 40195d1..c230ce9 100644
 --- a/osfmk/arm64/angelican_early.h
 +++ b/osfmk/arm64/angelican_early.h
-@@ -1,14 +1,17 @@
+@@ -1,14 +1,16 @@
 -/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
 +/* Screen diagnostics through bootstrap TTBR0 and the final kernel TTBR1. */
  #ifndef _ARM64_ANGELICAN_EARLY_H_
@@ -146,7 +124,6 @@ index 40195d1..2ba32bb 100644
  
  #if defined(ANGELICAN)
  void angelican_early_mark(unsigned int stage, const char *label);
-+void angelican_early_string(const char *s);
  void angelican_early_putc(char c);
  void angelican_early_panic(const char *fmt, va_list *args);
 +void angelican_early_relocate(uint64_t base);
@@ -154,13 +131,14 @@ index 40195d1..2ba32bb 100644
  #else
  static inline void
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 8879dcc..40fb2f3 100644
+index af8f7eb..33977d5 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1813,6 +1813,67 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
- #define ARM64_PHYSMAP_SLIDE_RANGE (1ULL << 30) // 1 GB
- #define ARM64_PHYSMAP_SLIDE_MASK  (ARM64_PHYSMAP_SLIDE_RANGE - 1)
+@@ -1825,6 +1825,68 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+ #define ARM64_PHYSMAP_ALIGNMENT_PADDING (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE)
+ #endif
  
++
 +#if defined(ANGELICAN)
 +
 +/*
@@ -225,14 +203,13 @@ index 8879dcc..40fb2f3 100644
  void
  arm_vm_init(uint64_t memory_size, boot_args * args)
  {
-@@ -2141,20 +2202,32 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2153,20 +2215,31 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  	arm_set_user_tbi();
  
 +#if defined(ANGELICAN)
 +	angelican_early_map_final();
-+	angelican_early_mark(8, "leaving bootstrap");
-+	angelican_early_mark(8, "test");
++	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +#endif
 +
  	arm_vm_physmap_init(args);
@@ -260,7 +237,7 @@ index 8879dcc..40fb2f3 100644
  
  	// From here on out, we're off the bootstrap translation tables.
  
-@@ -2247,7 +2320,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2259,7 +2332,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
      }
  #endif
  #endif
@@ -270,7 +247,7 @@ index 8879dcc..40fb2f3 100644
  
  	disable_preemption();
  
-@@ -2298,6 +2373,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2310,6 +2385,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  		va_l1 = va_l2_end;
  		cpu_l1_tte++;
  	}
@@ -279,7 +256,7 @@ index 8879dcc..40fb2f3 100644
  #if defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR)
  	/*
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index efbd6cb..8017563 100644
+index efbd6cb..d0bf4eb 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
 @@ -26,6 +26,7 @@
@@ -290,14 +267,16 @@ index efbd6cb..8017563 100644
  #include <pexpert/arm/protos.h>
  #include <kern/sched_prim.h>
  #if HIBERNATION
-@@ -944,8 +945,10 @@ angelican_fb_serial_functions =
+@@ -944,9 +945,11 @@ angelican_fb_serial_functions =
  static void
  angelican_fb_probe(void)
  {
 +	angelican_early_mark(17, "fbcon config read; mapping");
  	angelican_fb = (volatile uint32_t *)
  	    ml_io_map_wcomb(ANGELICAN_FBCON_BASE, ANGELICAN_FBCON_SIZE);
+-
 +	angelican_early_mark(18, "fbcon mapping returned");
- 
++	
  	if (angelican_fb != NULL) {
  		register_serial_functions(&angelican_fb_serial_functions);
+ 	}
