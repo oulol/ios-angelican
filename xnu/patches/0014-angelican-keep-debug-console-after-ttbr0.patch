@@ -39,7 +39,7 @@ index f819fea..db2b971 100644
  	tlb.h \
  	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
-index 2e25c7a..bfab6af 100644
+index 2e25c7a..42ae231 100644
 --- a/osfmk/arm64/angelican_early.c
 +++ b/osfmk/arm64/angelican_early.c
 @@ -4,7 +4,8 @@
@@ -62,6 +62,15 @@ index 2e25c7a..bfab6af 100644
  #define EARLY_WIDTH            720u
  #define EARLY_HEIGHT           1600u
  #define EARLY_STRIDE_BYTES     2944u
+@@ -104,7 +106,7 @@ angelican_early_putc(char c)
+ #endif
+ }
+ 
+-static void
++void
+ angelican_early_string(const char *s)
+ {
+     while (*s) {
 @@ -115,15 +117,15 @@ angelican_early_string(const char *s)
  void
  angelican_early_mark(unsigned int stage, const char *label)
@@ -112,10 +121,10 @@ index 2e25c7a..bfab6af 100644
      __asm__ volatile("dsb sy" ::: "memory");
  }
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
-index 40195d1..3c6a40d 100644
+index 40195d1..cbd19af 100644
 --- a/osfmk/arm64/angelican_early.h
 +++ b/osfmk/arm64/angelican_early.h
-@@ -1,14 +1,16 @@
+@@ -1,14 +1,17 @@
 -/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
 +/* Screen diagnostics through bootstrap TTBR0 and the final kernel TTBR1. */
  #ifndef _ARM64_ANGELICAN_EARLY_H_
@@ -127,6 +136,7 @@ index 40195d1..3c6a40d 100644
  
  #if defined(ANGELICAN)
  void angelican_early_mark(unsigned int stage, const char *label);
++void angelican_early_string(const char *s);
  void angelican_early_putc(char c);
  void angelican_early_panic(const char *fmt, va_list *args);
 +void sweet_early_relocate(uint64_t base);
