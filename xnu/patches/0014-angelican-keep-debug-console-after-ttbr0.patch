@@ -26,6 +26,18 @@ index 173d438..47a3ce5 100644
  
  	serialmode = 0;
  	if (PE_parse_boot_argn("serial", &serialmode, sizeof(serialmode))) {
+diff --git a/osfmk/arm64/Makefile b/osfmk/arm64/Makefile
+index f819fea..db2b971 100644
+--- a/osfmk/arm64/Makefile
++++ b/osfmk/arm64/Makefile
+@@ -40,6 +40,7 @@ EXPORT_MD_LIST = \
+ 	monotonic.h \
+ 	perfmon_arm64_regs.h \
+ 	proc_reg.h \
++	angelican_early.h \
+ 	asm.h \
+ 	tlb.h \
+ 	pal_hibernate.h
 diff --git a/osfmk/arm64/angelican_early.c b/osfmk/arm64/angelican_early.c
 index 2e25c7a..b1cc749 100644
 --- a/osfmk/arm64/angelican_early.c
