@@ -1,25 +1,27 @@
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 997a4ab..efbd6cb 100644
+index 997a4ab..fefeef8 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -697,6 +697,261 @@ register_serial_functions(struct pe_serial_functions *fns)
+@@ -697,6 +697,252 @@ register_serial_functions(struct pe_serial_functions *fns)
  	gPESF = fns;
  }
  
++
 +/*****************************************************************************/
 +/* Angelican framebuffer console                                             */
 +/*****************************************************************************/
 +
-+#define ANGELICAN_FBCON_BASE       0x7EC50000ULL
-+#define ANGELICAN_FBCON_SIZE       0x00D8C000ULL
-+#define ANGELICAN_FBCON_WIDTH      720u
-+#define ANGELICAN_FBCON_HEIGHT     1600u
-+#define ANGELICAN_FBCON_STRIDE     2944u
-+#define ANGELICAN_FBCON_SCALE      2u
-+#define ANGELICAN_FBCON_FG         0xFFFFFFFFu
-+#define ANGELICAN_FBCON_BG         0xFF000000u
++#define ANGELICAN_FBCON_BASE        0x7EC50000ULL
++#define ANGELICAN_FBCON_SIZE        0x00D8C000ULL
++#define ANGELICAN_FBCON_WIDTH       720u
++#define ANGELICAN_FBCON_HEIGHT      1600u
++#define ANGELICAN_FBCON_STRIDE      2944u
 +
-+#define ANGELICAN_FBCON_CHAR_WIDTH 8u
++#define ANGELICAN_FBCON_SCALE       2u
++#define ANGELICAN_FBCON_FG          0xFFFFFFFFu
++#define ANGELICAN_FBCON_BG          0xFF000000u
++
++#define ANGELICAN_FBCON_CHAR_WIDTH  8u
 +#define ANGELICAN_FBCON_CHAR_HEIGHT 16u
 +
 +extern unsigned char iso_font[256 * 16];
@@ -29,242 +31,231 @@ index 997a4ab..efbd6cb 100644
 +static uint32_t angelican_fb_row;
 +static uint32_t angelican_fb_cols;
 +static uint32_t angelican_fb_rows;
++static uint32_t angelican_fb_width;
++static uint32_t angelican_fb_height;
++static uint32_t angelican_fb_stride;
 +
 +static void
 +angelican_fb_clear_row(uint32_t row)
 +{
-+	uint32_t y;
-+	uint32_t x;
++    if (angelican_fb == NULL || row >= angelican_fb_rows) {
++        return;
++    }
 +
-+	const uint32_t pixel_width = ANGELICAN_FBCON_WIDTH;
-+	const uint32_t stride_pixels =
-+	    ANGELICAN_FBCON_STRIDE / sizeof(uint32_t);
++    const uint32_t stride_pixels =
++        angelican_fb_stride / sizeof(uint32_t);
 +
-+	const uint32_t row_start =
-+	    row * ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE;
++    const uint32_t row_start =
++        row * ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE;
 +
-+	const uint32_t row_end =
-+	    row_start + ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE;
++    const uint32_t row_end =
++        row_start + ANGELICAN_FBCON_CHAR_HEIGHT *
++        ANGELICAN_FBCON_SCALE;
 +
-+	for (y = row_start; y < row_end; y++) {
-+		volatile uint32_t *line =
-+		    angelican_fb + y * stride_pixels;
++    for (uint32_t y = row_start; y < row_end; y++) {
++        volatile uint32_t *line =
++            angelican_fb + y * stride_pixels;
 +
-+		for (x = 0; x < pixel_width; x++) {
-+			line[x] = ANGELICAN_FBCON_BG;
-+		}
-+	}
-+}
-+
-+static void
-+angelican_fb_scroll(void)
-+{
-+	uint32_t y;
-+	uint32_t x;
-+
-+	const uint32_t stride_pixels =
-+	    ANGELICAN_FBCON_STRIDE / sizeof(uint32_t);
-+
-+	const uint32_t character_height =
-+	    ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE;
-+
-+	const uint32_t scroll_height =
-+	    ANGELICAN_FBCON_HEIGHT - character_height;
-+
-+	/*
-+	 * Move the framebuffer contents up by one character row.
-+	 */
-+	for (y = 0; y < scroll_height; y++) {
-+		volatile uint32_t *dst =
-+		    angelican_fb + y * stride_pixels;
-+
-+		volatile uint32_t *src =
-+		    angelican_fb + (y + character_height) * stride_pixels;
-+
-+		for (x = 0; x < ANGELICAN_FBCON_WIDTH; x++) {
-+			dst[x] = src[x];
-+		}
-+	}
-+
-+	/*
-+	 * Clear the bottom row.
-+	 */
-+	angelican_fb_clear_row(angelican_fb_rows - 1);
-+
-+	angelican_fb_row = angelican_fb_rows - 1;
-+	angelican_fb_col = 0;
++        for (uint32_t x = 0; x < angelican_fb_width; x++) {
++            line[x] = ANGELICAN_FBCON_BG;
++        }
++    }
 +}
 +
 +static void
 +angelican_fb_newline(void)
 +{
-+	angelican_fb_col = 0;
++    angelican_fb_col = 0;
++    angelican_fb_row = (angelican_fb_row + 1) % angelican_fb_rows;
 +
-+	if (++angelican_fb_row >= angelican_fb_rows) {
-+		angelican_fb_scroll();
-+		return;
-+	}
-+
-+	angelican_fb_clear_row(angelican_fb_row);
++    angelican_fb_clear_row(angelican_fb_row);
++    angelican_fb_clear_row(
++        (angelican_fb_row + 1) % angelican_fb_rows);
 +}
 +
 +static void
 +angelican_fb_init(void)
 +{
-+	uint32_t y;
-+	uint32_t x;
++    if (angelican_fb == NULL) {
++        return;
++    }
 +
-+	angelican_fb_cols =
-+	    ANGELICAN_FBCON_WIDTH /
-+	    (ANGELICAN_FBCON_CHAR_WIDTH * ANGELICAN_FBCON_SCALE);
++    angelican_fb_cols =
++        angelican_fb_width /
++        (ANGELICAN_FBCON_CHAR_WIDTH * ANGELICAN_FBCON_SCALE);
 +
-+	angelican_fb_rows =
-+	    ANGELICAN_FBCON_HEIGHT /
-+	    (ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE);
++    angelican_fb_rows =
++        angelican_fb_height /
++        (ANGELICAN_FBCON_CHAR_HEIGHT * ANGELICAN_FBCON_SCALE);
 +
-+	angelican_fb_col = 0;
-+	angelican_fb_row = 0;
++    if (angelican_fb_cols == 0 || angelican_fb_rows == 0) {
++        return;
++    }
 +
-+	const uint32_t stride_pixels =
-+	    ANGELICAN_FBCON_STRIDE / sizeof(uint32_t);
++    angelican_fb_col = 0;
++    angelican_fb_row = 0;
 +
-+	for (y = 0; y < ANGELICAN_FBCON_HEIGHT; y++) {
-+		volatile uint32_t *line =
-+		    angelican_fb + y * stride_pixels;
-+
-+		for (x = 0; x < ANGELICAN_FBCON_WIDTH; x++) {
-+			line[x] = ANGELICAN_FBCON_BG;
-+		}
-+	}
++    for (uint32_t r = 0; r < angelican_fb_rows; r++) {
++        angelican_fb_clear_row(r);
++    }
 +}
 +
 +static unsigned int
 +angelican_fb_transmit_ready(void)
 +{
-+	return 1;
++    return 1;
 +}
 +
 +static void
 +angelican_fb_transmit_data(uint8_t c)
 +{
-+	uint32_t gx;
-+	uint32_t gy;
++    if (angelican_fb == NULL) {
++        return;
++    }
 +
-+	if (angelican_fb == NULL) {
-+		return;
-+	}
++    if (c == '\r') {
++        angelican_fb_col = 0;
++        return;
++    }
 +
-+	switch (c) {
-+	case '\r':
-+		angelican_fb_col = 0;
-+		return;
++    if (c == '\n') {
++        angelican_fb_newline();
++        return;
++    }
 +
-+	case '\n':
-+		angelican_fb_newline();
-+		return;
++    if (angelican_fb_col >= angelican_fb_cols) {
++        angelican_fb_newline();
++    }
 +
-+	case '\t':
-+		angelican_fb_col =
-+		    (angelican_fb_col + 4u) & ~3u;
++    const unsigned char *glyph =
++        iso_font + c * ANGELICAN_FBCON_CHAR_HEIGHT;
 +
-+		if (angelican_fb_col >= angelican_fb_cols) {
-+			angelican_fb_newline();
-+		}
-+		return;
++    const uint32_t x0 =
++        angelican_fb_col *
++        ANGELICAN_FBCON_CHAR_WIDTH *
++        ANGELICAN_FBCON_SCALE;
 +
-+	default:
-+		break;
-+	}
++    const uint32_t y0 =
++        angelican_fb_row *
++        ANGELICAN_FBCON_CHAR_HEIGHT *
++        ANGELICAN_FBCON_SCALE;
 +
-+	if (angelican_fb_col >= angelican_fb_cols) {
-+		angelican_fb_newline();
-+	}
++    const uint32_t stride_pixels =
++        angelican_fb_stride / sizeof(uint32_t);
 +
-+	const unsigned char *glyph =
-+	    iso_font + ((uint32_t)c * ANGELICAN_FBCON_CHAR_HEIGHT);
++    for (uint32_t gy = 0; gy < ANGELICAN_FBCON_CHAR_HEIGHT; gy++) {
++        for (uint32_t sy = 0; sy < ANGELICAN_FBCON_SCALE; sy++) {
++            volatile uint32_t *line =
++                angelican_fb +
++                (y0 + gy * ANGELICAN_FBCON_SCALE + sy) *
++                stride_pixels + x0;
 +
-+	const uint32_t x0 =
-+	    angelican_fb_col *
-+	    ANGELICAN_FBCON_CHAR_WIDTH *
-+	    ANGELICAN_FBCON_SCALE;
++            for (uint32_t gx = 0; gx < ANGELICAN_FBCON_CHAR_WIDTH; gx++) {
++                const uint32_t px =
++                    (glyph[gy] & (1u << gx))
++                    ? ANGELICAN_FBCON_FG
++                    : ANGELICAN_FBCON_BG;
 +
-+	const uint32_t y0 =
-+	    angelican_fb_row *
-+	    ANGELICAN_FBCON_CHAR_HEIGHT *
-+	    ANGELICAN_FBCON_SCALE;
++                for (uint32_t sx = 0; sx < ANGELICAN_FBCON_SCALE; sx++) {
++                    line[gx * ANGELICAN_FBCON_SCALE + sx] = px;
++                }
++            }
++        }
++    }
 +
-+	const uint32_t stride_pixels =
-+	    ANGELICAN_FBCON_STRIDE / sizeof(uint32_t);
-+
-+	for (gy = 0; gy < ANGELICAN_FBCON_CHAR_HEIGHT; gy++) {
-+		uint32_t sy;
-+
-+		for (sy = 0; sy < ANGELICAN_FBCON_SCALE; sy++) {
-+			volatile uint32_t *line =
-+			    angelican_fb +
-+			    (y0 + gy * ANGELICAN_FBCON_SCALE + sy) *
-+			    stride_pixels +
-+			    x0;
-+
-+			for (gx = 0; gx < ANGELICAN_FBCON_CHAR_WIDTH; gx++) {
-+				const uint32_t bit =
-+				    (glyph[gy] >> (7u - gx)) & 1u;
-+
-+				const uint32_t color =
-+				    bit ? ANGELICAN_FBCON_FG :
-+				    ANGELICAN_FBCON_BG;
-+
-+				uint32_t sx;
-+
-+				for (sx = 0; sx < ANGELICAN_FBCON_SCALE; sx++) {
-+					line[gx * ANGELICAN_FBCON_SCALE + sx] =
-+					    color;
-+				}
-+			}
-+		}
-+	}
-+
-+	angelican_fb_col++;
++    angelican_fb_col++;
 +}
 +
 +static unsigned int
 +angelican_fb_receive_ready(void)
 +{
-+	return 0;
++    return 0;
 +}
 +
 +static uint8_t
 +angelican_fb_receive_data(void)
 +{
-+	return 0;
++    return 0;
 +}
 +
 +static SECURITY_READ_ONLY_LATE(struct pe_serial_functions)
 +angelican_fb_serial_functions =
 +{
-+	.init = angelican_fb_init,
-+	.transmit_ready = angelican_fb_transmit_ready,
-+	.transmit_data = angelican_fb_transmit_data,
-+	.receive_ready = angelican_fb_receive_ready,
-+	.receive_data = angelican_fb_receive_data,
-+	.device = SERIAL_ANGELICAN_FBCON
++    .init = angelican_fb_init,
++    .transmit_ready = angelican_fb_transmit_ready,
++    .transmit_data = angelican_fb_transmit_data,
++    .receive_ready = angelican_fb_receive_ready,
++    .receive_data = angelican_fb_receive_data,
++    .device = SERIAL_ANGELICAN_FBCON
 +};
 +
 +static void
 +angelican_fb_probe(void)
 +{
-+	angelican_fb = (volatile uint32_t *)
-+	    ml_io_map_wcomb(ANGELICAN_FBCON_BASE, ANGELICAN_FBCON_SIZE);
++    DTEntry entry;
++    uint64_t const *reg;
++    uint32_t const *val;
++    unsigned int size;
 +
-+	if (angelican_fb != NULL) {
-+		register_serial_functions(&angelican_fb_serial_functions);
-+	}
++    /* Find the Angelican framebuffer ADT node. */
++    if (SecureDTFindEntry("name", "angelican-fbcon", &entry) != kSuccess) {
++        return;
++    }
++
++    /* Read physical framebuffer address and allocation size. */
++    if (SecureDTGetProperty(entry, "reg",
++        (void const **)&reg, &size) != kSuccess ||
++        size < 2 * sizeof(uint64_t)) {
++        return;
++    }
++
++    /* Read visible width. */
++    if (SecureDTGetProperty(entry, "width",
++        (void const **)&val, &size) != kSuccess ||
++        size < sizeof(uint32_t)) {
++        return;
++    }
++    angelican_fb_width = *val;
++
++    /* Read height. */
++    if (SecureDTGetProperty(entry, "height",
++        (void const **)&val, &size) != kSuccess ||
++        size < sizeof(uint32_t)) {
++        return;
++    }
++    angelican_fb_height = *val;
++
++    /* Read stride in bytes. */
++    if (SecureDTGetProperty(entry, "stride",
++        (void const **)&val, &size) != kSuccess ||
++        size < sizeof(uint32_t)) {
++        return;
++    }
++    angelican_fb_stride = *val;
++
++    /* Validate framebuffer geometry and allocation size. */
++    if (angelican_fb_width == 0 ||
++        angelican_fb_height < ANGELICAN_FBCON_CHAR_HEIGHT *
++            ANGELICAN_FBCON_SCALE ||
++        angelican_fb_stride < angelican_fb_width * sizeof(uint32_t) ||
++        (angelican_fb_stride % sizeof(uint32_t)) != 0 ||
++        (uint64_t)angelican_fb_stride * angelican_fb_height > reg[1]) {
++        return;
++    }
++
++    /* Map physical framebuffer into kernel virtual address space. */
++    angelican_fb = (volatile uint32_t *)
++        ml_io_map_wcomb(reg[0], reg[1]);
++
++    if (angelican_fb != NULL) {
++        register_serial_functions(&angelican_fb_serial_functions);
++    }
 +}
 +
  #if HIBERNATION
  /**
   * Transitions the serial driver into a mode that can be run in the hibernation
-@@ -769,10 +1024,12 @@ serial_init(void)
+@@ -769,10 +1015,12 @@ serial_init(void)
  		return 1;
  	}
  
@@ -278,7 +269,7 @@ index 997a4ab..efbd6cb 100644
  	}
  
  	PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
-@@ -897,6 +1154,8 @@ serial_init(void)
+@@ -897,6 +1145,8 @@ serial_init(void)
  	}
  #endif /* APPLE_UART */
  
