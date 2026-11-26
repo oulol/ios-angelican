@@ -121,7 +121,7 @@ index 2e25c7a..42ae231 100644
      __asm__ volatile("dsb sy" ::: "memory");
  }
 diff --git a/osfmk/arm64/angelican_early.h b/osfmk/arm64/angelican_early.h
-index 40195d1..cbd19af 100644
+index 40195d1..2ba32bb 100644
 --- a/osfmk/arm64/angelican_early.h
 +++ b/osfmk/arm64/angelican_early.h
 @@ -1,14 +1,17 @@
@@ -139,12 +139,12 @@ index 40195d1..cbd19af 100644
 +void angelican_early_string(const char *s);
  void angelican_early_putc(char c);
  void angelican_early_panic(const char *fmt, va_list *args);
-+void sweet_early_relocate(uint64_t base);
++void angelican_early_relocate(uint64_t base);
  void angelican_early_disable(void);
  #else
  static inline void
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 8879dcc..793cb53 100644
+index 8879dcc..327e286 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
 @@ -1813,6 +1813,67 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
@@ -215,12 +215,16 @@ index 8879dcc..793cb53 100644
  void
  arm_vm_init(uint64_t memory_size, boot_args * args)
  {
-@@ -2141,20 +2202,36 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2141,20 +2202,34 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  
  	arm_set_user_tbi();
  
 +#if defined(ANGELICAN)
 +	angelican_early_map_final();
++#endif
++	/* The framebuffer VA=PA mapping belongs to the outgoing TTBR0. */
++#if defined(ANGELICAN)
++	angelican_early_mark(8, "leaving bootstrap TTBR0");
 +#endif
 +
  	arm_vm_physmap_init(args);
@@ -228,13 +232,8 @@ index 8879dcc..793cb53 100644
  
  	ml_enable_monitor();
  
- 	/* The framebuffer VA=PA mapping belongs to the outgoing TTBR0. */
+-	/* The framebuffer VA=PA mapping belongs to the outgoing TTBR0. */
 -	angelican_early_disable();
-+#if defined(ANGELICAN)
-+	angelican_early_mark(8, "leaving bootstrap TTBR0");
-+	angelican_early_string("TEST\n");
-+#endif
-+
  	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
  
 +#if defined(ANGELICAN)
@@ -253,7 +252,7 @@ index 8879dcc..793cb53 100644
  
  	// From here on out, we're off the bootstrap translation tables.
  
-@@ -2247,7 +2324,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2247,7 +2322,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
      }
  #endif
  #endif
@@ -263,7 +262,7 @@ index 8879dcc..793cb53 100644
  
  	disable_preemption();
  
-@@ -2298,6 +2377,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+@@ -2298,6 +2375,7 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
  		va_l1 = va_l2_end;
  		cpu_l1_tte++;
  	}
