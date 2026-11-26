@@ -1,8 +1,8 @@
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 997a4ab..04b6968 100644
+index 997a4ab..f9e4854 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -697,6 +697,252 @@ register_serial_functions(struct pe_serial_functions *fns)
+@@ -697,6 +697,245 @@ register_serial_functions(struct pe_serial_functions *fns)
  	gPESF = fns;
  }
  
@@ -10,16 +10,9 @@ index 997a4ab..04b6968 100644
 +/*****************************************************************************/
 +/* Angelican framebuffer console                                             */
 +/*****************************************************************************/
-+
-+#define ANGELICAN_FBCON_BASE        0x7EC50000ULL
-+#define ANGELICAN_FBCON_SIZE        0x00D8C000ULL
-+#define ANGELICAN_FBCON_WIDTH       720u
-+#define ANGELICAN_FBCON_HEIGHT      1600u
-+#define ANGELICAN_FBCON_STRIDE      2944u
-+
 +#define ANGELICAN_FBCON_SCALE       2u
-+#define ANGELICAN_FBCON_FG          0xFF000000u
-+#define ANGELICAN_FBCON_BG          0xFFFFFFFFu
++#define ANGELICAN_FBCON_FG          0xFFFFFFFFu
++#define ANGELICAN_FBCON_BG          0xFF000000u
 +
 +#define ANGELICAN_FBCON_CHAR_WIDTH  8u
 +#define ANGELICAN_FBCON_CHAR_HEIGHT 16u
@@ -255,7 +248,7 @@ index 997a4ab..04b6968 100644
  #if HIBERNATION
  /**
   * Transitions the serial driver into a mode that can be run in the hibernation
-@@ -777,6 +1023,8 @@ serial_init(void)
+@@ -777,6 +1016,8 @@ serial_init(void)
  
  	PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
  
