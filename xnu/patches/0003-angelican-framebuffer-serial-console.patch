@@ -1,5 +1,5 @@
 diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
-index 997a4ab..fefeef8 100644
+index 997a4ab..04b6968 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
 @@ -697,6 +697,252 @@ register_serial_functions(struct pe_serial_functions *fns)
@@ -255,29 +255,15 @@ index 997a4ab..fefeef8 100644
  #if HIBERNATION
  /**
   * Transitions the serial driver into a mode that can be run in the hibernation
-@@ -769,10 +1015,12 @@ serial_init(void)
- 		return 1;
- 	}
+@@ -777,6 +1023,8 @@ serial_init(void)
+ 
+ 	PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
  
 +	angelican_fb_probe();
 +
- 	soc_base = pe_arm_get_soc_base_phys();
- 
- 	if (soc_base == 0) {
--		return 0;
-+		goto serial_init_registered_devices;
- 	}
- 
- 	PE_parse_boot_argn("disable-uart-irq", &disable_uart_irq, sizeof(disable_uart_irq));
-@@ -897,6 +1145,8 @@ serial_init(void)
- 	}
- #endif /* APPLE_UART */
- 
-+serial_init_registered_devices:
-+
- 	if (gPESF == NULL) {
- 		return 0;
- 	}
+ #ifdef PI3_UART
+ 	if (SecureDTFindEntry("name", "gpio", &entryP) == kSuccess) {
+ 		SecureDTGetProperty(entryP, "reg", (void const **)&reg_prop, &prop_size);
 diff --git a/pexpert/pexpert/arm/protos.h b/pexpert/pexpert/arm/protos.h
 index 404b50b..b6f4dda 100644
 --- a/pexpert/pexpert/arm/protos.h
