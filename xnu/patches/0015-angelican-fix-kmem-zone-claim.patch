@@ -1,8 +1,8 @@
 diff --git a/osfmk/kern/zalloc.c b/osfmk/kern/zalloc.c
-index 182b44a..87fc2a6 100644
+index 182b44a..889e7c7 100644
 --- a/osfmk/kern/zalloc.c
 +++ b/osfmk/kern/zalloc.c
-@@ -160,13 +160,24 @@ ZONE_DEFINE_TYPE(percpu_u64_zone, "percpu.64", uint64_t,
+@@ -160,13 +160,22 @@ ZONE_DEFINE_TYPE(percpu_u64_zone, "percpu.64", uint64_t,
  #define ZONE_GUARD_SPARSE       (64  * 1024)
  #endif /* ZSECURITY_CONFIG(SAD_FENG_SHUI) */
  
@@ -24,8 +24,6 @@ index 182b44a..87fc2a6 100644
 -#endif /* !XNU_PLATFORM_MacOSX */
 +
 +#endif /* !XNU_PLATFORM_MacOSX && !ANGELICAN */
-+
-+#endif 
  
  __enum_closed_decl(zm_len_t, uint16_t, {
  	ZM_CHUNK_FREE           = 0x0,
