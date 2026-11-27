@@ -67,6 +67,70 @@ index 133b07f..c98fc5f 100644
  #else
  #error processor not supported
  #endif
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index c40c6ea..9d2620c 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -32,6 +32,7 @@
+ #include <arm/misc_protos.h>
+ #include <arm/thread.h>
+ #include <arm/rtclock.h>
++#include <arm/machine_cpu.h>
+ #include <arm/trap.h> /* for IS_ARM_GDB_TRAP() et al */
+ #include <arm64/proc_reg.h>
+ #include <arm64/machine_machdep.h>
+@@ -1854,7 +1855,42 @@ sleh_irq(arm_saved_state_t *state)
+ 	int preemption_level = sleh_get_preemption_level();
+ #endif
+ 
++#if defined(ANGELICAN)
++	/*
++	 * sweet: TrustZone owns GIC Group 0, so the timer and IPIs that other
++	 * ARM64 targets take as FIQs arrive here as Group 1 IRQs.
++	 */
++	uint64_t iar = __builtin_arm_rsr64("ICC_IAR1_EL1");
++	uint32_t intid = (uint32_t)(iar & 0xFFFFFF);
+ 
++	if (intid >= 1020 && intid <= 1023) {
++		return; /* spurious */
++	}
++	if (intid == ANGELICAN_VTIMER_INTID) {
++		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_TIMER);
++		cdp->cpu_decrementer = -1; /* Large */
++		INTERRUPT_MASKED_DEBUG_START(rtclock_intr, DBG_INTR_TYPE_TIMER);
++		rtclock_intr(TRUE);
++		INTERRUPT_MASKED_DEBUG_END();
++		__builtin_arm_wsr64("ICC_EOIR1_EL1", iar);
++	} else if (intid == ANGELICAN_IPI_SGI) {
++		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_IPI);
++		/* Ack before handling so an IPI raised meanwhile is not lost */
++		__builtin_arm_wsr64("ICC_EOIR1_EL1", iar);
++		__builtin_arm_isb(ISB_SY);
++		cpu_signal_handler();
++	} else {
++		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_OTHER);
++		if (cdp->interrupt_handler) {
++			cdp->interrupt_handler(cdp->interrupt_target,
++			    cdp->interrupt_refCon,
++			    cdp->interrupt_nub,
++			    intid);
++		}
++		__builtin_arm_wsr64("ICC_EOIR1_EL1", iar);
++	}
++	__builtin_arm_isb(ISB_SY);
++#else
+ 	sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_OTHER);
+ 
+ #if USE_APPLEARMSMP
+@@ -1866,7 +1902,7 @@ sleh_irq(arm_saved_state_t *state)
+ 	    cdp->interrupt_nub,
+ 	    cdp->interrupt_source);
+ #endif
+-
++#endif /* ANGELICAN */
+ 	entropy_collect();
+ 
+ 
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 index e5336e5..4592d55 100644
 --- a/osfmk/arm64/start.s
@@ -109,12 +173,88 @@ index e5336e5..4592d55 100644
  #endif
  
  	// If x21 != 0, we're doing a warm reset, so we need to trampoline to the kernel pmap.
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+index 3ad743f..9ba11d4 100644
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -141,20 +141,40 @@ pe_init_fiq()
+ 		}
+ 	}
+ 
++#if defined(ANGELICAN)
++	/*
++	 * Real hardware with two security states: Group 0 is TrustZone's and
++	 * non-secure writes to it are ignored. Everything we own is Group 1 NS
++	 * and arrives as an IRQ (see sleh_irq). GICR_IGROUPR0 reads as zero
++	 * from the non-secure side even after this write; delivery still works.
++	 */
++	gicr_write32(GICR_IGROUPR0, 0xFFFFFFFF);
++	for (unsigned int i = 0; i < 32; i += 4) {
++		gicr_write32(GICR_IPRIORITYR0 + i, 0xA0A0A0A0);
++	}
++	gicr_write32(GICR_ISENABLER0, 
++		(1U << ANGELICAN_VTIMER_INITD) | 
++		(1U << ANGELICAN_IPI_SGI)
++	);
++#else
+ 	// Configure timers and legacy FIQ to be group 0
+ 	gicr_write32(GICR_IGROUPR0, 0x81FFFFFF);
+ 
+ 	// Enable PPI 27
+ 	gicr_write32(GICR_ISENABLER0, (1 << 27));
+-
++#endif /* ANGELICAN */
+ 	// Enable system register access
+ 	uint64_t icc_sre = __builtin_arm_rsr64("ICC_SRE_EL1");
+ 	icc_sre |= ICC_SRE_SRE;
+ 	__builtin_arm_wsr64("ICC_SRE_EL1", icc_sre);
+ 	__builtin_arm_isb(ISB_SY);
+ 
+-	// Set priority masks and binary point for group 0
+-	__builtin_arm_wsr64("ICC_BPR0_EL1", 0);
++#if defined(ANGELICAN)
++	__builtin_arm_wsr64("ICC_BPR1_EL1", 0);
++#else
++ 	// Set priority masks and binary point for group 0
++ 	__builtin_arm_wsr64("ICC_BPR0_EL1", 0);
++#endif /* ANGELICAN */
+ 	__builtin_arm_wsr64("ICC_PMR_EL1", 0xFF);
+ 
+ 	// Set EOI mode of this processor
+@@ -162,12 +182,24 @@ pe_init_fiq()
+ 	icc_ctlr &= ~ICC_CTLR_EOIMODE;
+ 	__builtin_arm_wsr64("ICC_CTLR_EL1", icc_ctlr);
+ 
+-	// Enable the forwarding of the vtimer interrupt
++#if defined(ANGELICAN)
++	// ABL leaves only ARE_NS set; Linux writes ARE_NS | EnableGrp1A | EnableGrp1
+ 	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
+-	gicd_ctlr |= GICD_CTLR_ENABLEGRP0;
++	gicd_ctlr |= GICD_CTLR_ARE_NS | GICD_CTLR_ENABLEGRP1A | GICD_CTLR_ENABLEGRP1;
+ 	gicd_write32(GICD_CTLR, gicd_ctlr);
+-	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
++	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
++		;
++	}
++	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
++#else
++ 	// Enable the forwarding of the vtimer interrupt
++ 	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
++ 	gicd_ctlr |= GICD_CTLR_ENABLEGRP0;
++ 	gicd_write32(GICD_CTLR, gicd_ctlr);
++ 	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
++ 	__builtin_arm_isb(ISB_SY);
++#endif /* ANGELICAN */
+ }
+ #else
+ void
 diff --git a/pexpert/pexpert/arm64/ANGELICAN.h b/pexpert/pexpert/arm64/ANGELICAN.h
 new file mode 100644
-index 0000000..2c7aa1b
+index 0000000..a9f5388
 --- /dev/null
 +++ b/pexpert/pexpert/arm64/ANGELICAN.h
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,75 @@
 +/*
 + * Board configuration for Xiaomi Redmi 9C NFC ("angelican").
 + *
@@ -157,28 +297,37 @@ index 0000000..2c7aa1b
 +/* The architected virtual timer is PPI 11, INTID 27. */
 +#define ANGELICAN_VTIMER_PPI        11
 +#define ANGELICAN_VTIMER_INTID      27
++#define ANGELICAN_IPI_SGI           1
 +
-+/* GICv3 register definitions, also used by the XNU GIC implementation. */
++/* GICv3 definitions */
 +#define GIC_SPURIOUS_IRQ            1023
 +#define GICR_PE_SIZE                0x20000
 +
-+#define GICD_CTLR                   0x0
-+#define GICD_CTLR_ENABLEGRP0        0x1
++/* GIC Distributor */
++#define GICD_CTLR                   0x0000
++#define GICD_CTLR_ENABLEGRP0        (1U << 0)
++#define GICD_CTLR_ENABLEGRP1        (1U << 0)
++#define GICD_CTLR_ENABLEGRP1A       (1U << 1)
++#define GICD_CTLR_ARE_NS            (1U << 4)
++#define GICD_CTLR_RWP               (1U << 31)
 +
-+#define GICR_TYPER                  0x08
-+#define GICR_WAKER                  0x14
-+#define GICR_IGROUPR0               0x10080
-+#define GICR_ISENABLER0             0x10100
++/* GIC Redistributor */
++#define GICR_TYPER                 0x0008
++#define GICR_WAKER                 0x0014
++
++#define GICR_IGROUPR0              0x10080
++#define GICR_ISENABLER0            0x10100
++#define GICR_IPRIORITYR0           0x10400
 +
 +#define GICR_TYPER_AFFINITY_VALUE_SHIFT 32
-+#define GICR_TYPER_LAST             0x10
++#define GICR_TYPER_LAST            (1ULL << 4)
 +
-+#define GICR_WAKER_PROCESSORSLEEP   0x2
-+#define GICR_WAKER_CHILDRENASLEEP   0x4
++#define GICR_WAKER_PROCESSORSLEEP  (1U << 1)
++#define GICR_WAKER_CHILDRENASLEEP  (1U << 2)
 +
-+/* ICC_CTLR_EL1.EOImode is bit 1; ICC_SRE_EL1.SRE is bit 0. */
-+#define ICC_CTLR_EOIMODE            0x2
-+#define ICC_SRE_SRE                 0x1
++/* CPU interface system registers */
++#define ICC_CTLR_EOIMODE           (1ULL << 1)
++#define ICC_SRE_SRE                (1ULL << 0)
 +
 +#endif /* ! _PEXPERT_ARM64_ANGELICAN_H */
 \ No newline at end of file
