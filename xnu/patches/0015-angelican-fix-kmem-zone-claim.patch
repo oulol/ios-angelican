@@ -1,0 +1,18 @@
+diff --git a/osfmk/kern/zalloc.c b/osfmk/kern/zalloc.c
+index 182b44a..71e2bd8 100644
+--- a/osfmk/kern/zalloc.c
++++ b/osfmk/kern/zalloc.c
+@@ -165,7 +165,13 @@ ZONE_DEFINE_TYPE(percpu_u64_zone, "percpu.64", uint64_t,
+ #define ZONE_MAP_VA_SIZE        (128ULL << 30)
+ #else /* XNU_PLATFORM_MacOSX */
+ #define ZONE_MAP_MAX            (8ULL << 30)
++
++#if defined(ANGELICAN)
++#define ZONE_MAP_VA_SIZE        (8ULL << 30)
++#else
+ #define ZONE_MAP_VA_SIZE        (24ULL << 30)
++#endif
++
+ #endif /* !XNU_PLATFORM_MacOSX */
+ 
+ __enum_closed_decl(zm_len_t, uint16_t, {
