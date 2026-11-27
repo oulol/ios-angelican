@@ -174,7 +174,7 @@ index e5336e5..4592d55 100644
  
  	// If x21 != 0, we're doing a warm reset, so we need to trampoline to the kernel pmap.
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
-index 3ad743f..9ba11d4 100644
+index 3ad743f..6a68440 100644
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
 @@ -141,20 +141,40 @@ pe_init_fiq()
@@ -193,7 +193,7 @@ index 3ad743f..9ba11d4 100644
 +		gicr_write32(GICR_IPRIORITYR0 + i, 0xA0A0A0A0);
 +	}
 +	gicr_write32(GICR_ISENABLER0, 
-+		(1U << ANGELICAN_VTIMER_INITD) | 
++		(1U << ANGELICAN_VTIMER_INTID) | 
 +		(1U << ANGELICAN_IPI_SGI)
 +	);
 +#else
