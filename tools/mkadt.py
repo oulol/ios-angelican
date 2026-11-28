@@ -30,7 +30,7 @@ DEFAULT_RAM_SIZE = 0xC0000000
 # the stock DTB's mtkfb node.
 DEFAULT_FB_BASE = 0x7EC50000
 DEFAULT_FB_SIZE = 0xD8C000
-DEFAULT_FB_WIDTH = 736       # 720 visible pixels, 32-pixel aligned stride
+DEFAULT_FB_WIDTH = 720       # 720 visible pixels, 32-pixel aligned stride
 DEFAULT_FB_HEIGHT = 1600
 DEFAULT_FB_STRIDE = 2944
 DEFAULT_SOC_BASE = 0x01000000
@@ -362,7 +362,6 @@ def build_angelica_adt(hw, args):
         ("button-names", cstr("volup") + cstr("voldown") + cstr("hold")),
         ("home-button-type", u32(0)),
     ])
-
     product = []
     # Reuse D22AP /product only if the user's local Apple ADT is available.
     # This is userland compatibility metadata, not Angelica hardware data.
@@ -382,7 +381,7 @@ def build_angelica_adt(hw, args):
     root_props = [
         prop_phandle(ph),
         ("compatible", cstr("D22AP") + cstr("iPhone10,3") +
-         cstr("oulol,angelican") + cstr("mediatek,mt6765") + cstr("AppleARM")),
+         cstr("xiaomi,angelican") + cstr("mediatek,mt6765") + cstr("AppleARM")),
         ("model", cstr("iPhone10,3")),
         ("target-type", cstr("D22")),
         ("target-sub-type", cstr("D22AP")),
